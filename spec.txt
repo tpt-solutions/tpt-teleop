@@ -1,0 +1,139 @@
+Design Document: tpt-teleop (Tele-Presence Teleoperation)
+Version: 1.0.0 (v1 Monolithic Release - Extreme Performance Edition)
+Date: August 26, 2026
+Status: Approved for Development
+1. Executive Summary
+tpt-teleop is a hyper-optimized, zero-bloat, Rust-based middleware workspace for the teleoperation of physical robots and drones.
+While v1 includes a comprehensive feature set, it fundamentally rejects the "heavy" Rust ecosystem norms. By stripping out bloated async runtimes (like Tokio), avoiding heavy serialization frameworks, and writing custom lock-free, zero-copy primitives from scratch, tpt-teleop guarantees microsecond-level determinism and absolute minimal memory overhead.
+2. Licensing & Dependency Policy (Strict Enforcement)
+Project License: tpt-teleop itself will be dual-licensed under MIT OR Apache-2.0, ensuring maximum adoption and standard Rust ecosystem compatibility.
+Dependency Policy (The "MIT Chain"):
+To ensure the MIT chain remains unbroken and to avoid any Apache-only patent liabilities in the dependency tree, cargo-deny is configured with strict rules:
+Allowed: MIT, BSD (2/3-Clause), ISC, Zlib, MPL 2.0.
+Dual-Licensed: Crates licensed as MIT OR Apache-2.0 are allowed, but Cargo is explicitly configured to resolve and compile them strictly under the MIT license.
+Banned: Any crate that is strictly Apache-2.0.
+3. The "Extreme Performance" Philosophy
+To achieve the lowest possible latency and jitter, tpt-teleop abandons standard Rust web/async paradigms in favor of embedded-style, bare-metal optimization techniques applied to userspace applications.
+3.1. No Tokio / Custom Async Runtime
+Tokio’s work-stealing scheduler introduces latency jitter and pulls in a massive dependency tree.
+The Solution: tpt-teleop uses a Thread-Per-Core architecture. We do not use a global async runtime. Instead, we use raw io_uring (Linux) / kqueue (macOS/BSD) via the io-uring (MIT) crate, or write a custom epoll event loop from scratch. Each CPU core is pinned to a specific task (e.g., Core 0: Video Encoding, Core 1: Control Loop, Core 2: Network I/O) to eliminate context-switching and cache-thrashing.
+3.2. Lock-Free IPC (No Channels)
+Standard std::sync::mpsc or tokio::sync::broadcast involve mutexes and allocations.
+The Solution: We wrote tpt-teleop-ring (a custom internal crate). It is a lock-free, wait-free, Single-Producer-Single-Consumer (SPSC) ring buffer allocated in shared memory. Data is passed between threads via zero-copy pointer passing.
+3.3. Zero-Copy Serialization (No Serde)
+serde is incredibly flexible but requires allocations and copies.
+The Solution: We use rkyv (MIT) for all internal and network serialization. rkyv allows us to serialize data directly into a byte buffer and deserialize it with zero allocations and zero copies by simply casting byte slices to structs.
+3.4. Custom Memory Allocators
+Standard malloc causes fragmentation and latency spikes when allocating large video frames.
+The Solution: tpt-teleop-media uses a custom Slab Allocator and Memory Pool. Video frames and sensor packets are pre-allocated at startup and recycled. There are zero heap allocations in the hot path.
+4. Workspace Architecture (The Crates)
+Every crate uses the tpt-teleop- prefix.
+Core Workspace Crates
+tpt-teleop-core: The central state machine, autonomy handover logic, and the custom lock-free message bus.
+tpt-teleop-link: Custom UDP multiplexer, io_uring based networking, and WebRTC integration.
+tpt-teleop-input: Universal controller abstraction, polling directly from /dev/input or raw HID reports to bypass OS overhead.
+tpt-teleop-media: Zero-copy camera ingestion, custom slab-allocated frame buffers, and hardware-accelerated encoding.
+tpt-teleop-safety: Geofencing, latency compensation, and emergency overrides. Runs on a dedicated, highest-priority RT (Real-Time) thread.
+tpt-teleop-hal: Hardware Abstraction Layer. Direct memory-mapped I/O for CAN bus and serial, bypassing heavy OS abstractions.
+tpt-teleop-cloud: A minimal, custom-built HTTP/3 and WebSocket server (built on raw socket2 and quinn) for fleet management, entirely avoiding axum/hyper/tokio.
+tpt-teleop-sec: Zero-trust security, E2EE, and RBAC. Uses ring (ISC/MIT) for cryptography.
+tpt-teleop-analytics: Flight Data Recorder (FDR) writing directly to disk via O_DIRECT to bypass the OS page cache.
+5. The "Everything" Feature Matrix (v1)
+5.1. Control & Input (tpt-teleop-input)
+Raw HID Polling: Bypasses gilrs for the absolute lowest latency by reading raw HID reports directly via hidapi (MIT) or custom evdev (MIT) bindings.
+VR/AR Hand Tracking: OpenXR integration for 6DOF control.
+Haptic Feedback Loop: Direct force-feedback routing.
+Shared / Co-Pilot Control: Lock-free state sharing for multiple operators.
+5.2. Networking & Transport (tpt-teleop-link)
+Custom UDP Multiplexer: We wrote a custom UDP multiplexer from scratch to multiplex control, telemetry, and WebRTC ICE traffic over a single port (UDP 443), bypassing the heavy overhead of standard WebRTC stacks for simple control packets.
+QUIC Fallback: Uses quinn (MIT) for reliable control channels if UDP is blocked.
+Mesh Networking: Custom neighbor-discovery protocol for drone swarms.
+Bandwidth Throttling: Dynamically adjusts tpt-teleop-media encoding bitrate based on real-time io_uring network backpressure.
+5.3. Media & Telemetry (tpt-teleop-media)
+Zero-Copy V4L2 / DirectShow: Grabs camera frames directly into pre-allocated memory pools. No intermediate copies.
+Hardware-Accelerated Encoding: Direct bindings to NVENC/AMF via custom va-api wrappers.
+AR HUD: Uses wgpu (MIT) in a headless, off-screen rendering context to burn telemetry directly into the video frame before encoding.
+5.4. Safety & Autonomy Handover (tpt-teleop-core & tpt-teleop-safety)
+Deterministic Safety Loop: tpt-teleop-safety runs on an isolated thread with SCHED_FIFO (Linux) or equivalent real-time priority. It intercepts commands in <10 microseconds.
+Predictive Collision Avoidance: Intercepts operator commands and applies kinematic limits.
+Seamless Autonomy Handover: Mathematically smoothed transitions (using cubic splines) between Auto, Assist, and Full Teleop modes.
+5.5. Hardware Abstraction (tpt-teleop-hal)
+Raw SocketCAN: Direct interaction with CAN buses using socketcan (MIT) without heavy middleware.
+MAVLink: Lightweight, custom MAVLink parser written from scratch to avoid the overhead of rust-mavlink's serialization, parsing directly into rkyv structs.
+Mock Hardware: A built-in physics simulator using rapier (MIT side) for testing.
+5.6. Cloud & Multi-Tenancy (tpt-teleop-cloud)
+Custom HTTP/3 Server: Built from scratch using quinn (MIT) and raw socket2. No hyper, no tokio. Handles fleet dashboard API requests with minimal memory footprint.
+WebRTC SFU: Uses webrtc-rs (MIT) but heavily patched to use our custom lock-free ring buffers for media routing, eliminating internal allocations.
+Session Recording: Writes raw rkyv byte streams directly to disk.
+5.7. Security & Compliance (tpt-teleop-sec)
+E2EE: Uses ring (ISC/MIT) for AES-256-GCM and ChaCha20-Poly1305.
+Zero-Copy Crypto: Decrypts network packets directly into the tpt-teleop-ring buffer.
+5.8. Analytics & AI Export (tpt-teleop-analytics)
+O_DIRECT Logging: Bypasses the OS page cache to write FDR data directly to NVMe storage, ensuring logging never blocks the control loop.
+AI Training Pipeline: Exports rkyv buffers directly into PyTorch/JAX compatible memory formats.
+6. The TPT Data Flow (Zero-Copy Path)
+To illustrate the efficiency, here is how a single control command flows through the system:
+Ingest: tpt-teleop-input reads a raw HID report from the OS.
+Normalize: The raw bytes are cast (zero-copy) into a ControlCommand struct.
+Route: The struct is pushed into the tpt-teleop-ring (lock-free SPSC queue).
+Safety: tpt-teleop-safety pops the struct, checks geofences, modifies the struct in-place, and pushes it to the next ring.
+Serialize: tpt-teleop-link uses rkyv to serialize the struct directly into a pre-allocated UDP packet buffer.
+Transmit: The buffer is handed to io_uring for asynchronous, zero-copy kernel transmission.
+Total allocations in this path: Zero.
+Total mutex locks in this path: Zero.
+7. Dependency Matrix (The "No-Bloat" Stack)
+Functionality
+Standard Rust Ecosystem (Banned/Avoided)
+tpt-teleop Custom / Lightweight Choice
+License
+Async Runtime
+tokio, async-std
+Custom io_uring event loop / Thread-per-core
+MIT
+Web Framework
+axum, actix-web, hyper
+Custom minimal HTTP/3 server via quinn + socket2
+MIT
+Serialization
+serde, bincode, prost
+rkyv (Zero-copy)
+MIT
+IPC / Channels
+tokio::sync, crossbeam
+Custom tpt-teleop-ring (Lock-free SPSC)
+MIT
+Cryptography
+openssl, rustls
+ring
+ISC / MIT
+Networking
+reqwest, hyper
+socket2, quinn, Custom UDP Mux
+MIT
+Video/Media
+ffmpeg (heavy CLI wrappers)
+ va-api bindings
+ MIT
+Physics/Sim
+bevy (heavy ECS)
+rapier (MIT side only)
+MIT
+
+8. Developer Experience (DX)
+Despite the extreme low-level optimization, the developer experience remains ergonomic via procedural macros that hide the unsafe, zero-copy boilerplate.
+Macro-Driven Setup
+
+use tpt_teleop_core::prelude::*;
+
+// The macro generates the lock-free rings, the thread-pinning, 
+// and the zero-copy serialization boilerplate.
+#[tpt_teleop::robot(thread_per_core = true)]
+struct MyDrone {
+    #[tpt_teleop::camera(resolution = "1080p", zero_copy = true)]
+    front_cam: Camera,
+    
+    #[tpt_teleop::motor(bus = "CAN", priority = "REALTIME")]
+    left_rotor: Motor,
+}
+
+CLI Tool (tpt-teleop-cli): Scaffolds projects, configures cargo-deny for the MIT chain, and sets up CPU core pinning profiles.
