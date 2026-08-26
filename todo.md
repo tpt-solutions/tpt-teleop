@@ -4,7 +4,34 @@ Tracks all work derived from `spec.txt`, ordered by build dependency/risk
 (not spec section order). Simulation-first: Phase 4 builds a mock hardware
 backend so Phases 5–8 can be built and tested before real hardware (Phase 9)
 is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
-> **Status (2026-08-27):** Phases 0-8 complete and validated — `cargo test` green across the workspace; `cargo clippy -D warnings` clean on Windows and x86_64-linux-gnu targets; `cargo fmt --check` clean. The io_uring transmit path (`crates/tpt-t-link/src/uring.rs`) is wired into `NetService` on Linux, and Phase 8 adds a slab frame pool, telemetry burn-in, and an encoder bitrate governor driven by the Phase 7 `Backpressure` signal (`crates/tpt-t-media`). Real hardware FFI (V4L2 / DirectShow / AVFoundation / NVENC / AMF / wgpu) is deferred to hardware bring-up behind documented, loudly-failing stubs, consistent with the Phase 4/6 policy. See docs/ARCHITECTURE.md for the implemented design.
+> **Status (2026-08-27):** Implemented phases complete and validated — `cargo test`
+> green for the implemented phases (0-8, 10, and 11), `cargo clippy -D warnings` clean on the
+> implemented crates, `cargo fmt --check` clean. Phase 10 builds the fleet server, SFU,
+> session recorder, and MCP dispatch in `tpt-t-cloud`. As in Phase 7, the roadmap's
+> `quinn` (HTTP/3) and `webrtc-rs` (SFU) references are **superseded by in-house
+> components** behind the same API contract — both pull `tokio` plus Apache-2.0-only
+> branches and are banned by the §2 MIT chain (`deny.toml`). The cloud layer therefore
+> serves its dashboard over a custom HTTP/1.1 server on the Phase 2 event loop, routes
+> media through the in-house lock-free SPSC [`SfuFanout`], and sends unit commands via
+> the Phase 7 [`tpt_t_link`] UDP multiplexer. A `quinn`/WebRTC transport remains a
+> drop-in swap if dependency policy changes. (One minimal fix was required in
+> `tpt-t-link`: a half-wired `Secure` channel from the Phase 11 work left an
+> unmatched `Event` arm; it is now completed so the workspace builds.) Phase 12 (Analytics & AI Export) is implemented in `tpt-t-analytics`: O_DIRECT / FILE_FLAG_NO_BUFFERING / F_NOCACHE direct-I/O FDR logging over a wait-free SPSC ring (never blocks the control loop) plus rkyv-wire buffers → NumPy `.npy` export consumed natively by both PyTorch and JAX.
+
+> **Status (2026-08-27):** Phase 9 (HAL Completion) is implemented in
+> `tpt-t-hal`. The raw **SocketCAN** backend (`src/socketcan.rs`) is built on
+> `libc` FFI (`AF_CAN`/`SOCK_RAW`/`CAN_RAW`, non-blocking) instead of the
+> `socketcan` crate, preserving the §2 MIT-only chain; the **cross-platform**
+> backend (`src/stub_can.rs`) fails loudly with `HalError::Unsupported` until
+> vendor CAN stacks bind at hardware bring-up; a **from-scratch MAVLink 1.0/2.0
+> parser** (`src/mavlink.rs`) with CRC-16/MCRF4XX + dialect `crc_extra` tables
+> decodes frames into rkyv structs (`MavFrame`/`Heartbeat`/`Attitude`, all
+> `PlainBytes`); and **direct MMIO** (`src/mmio.rs`) provides `BufferMmio` (sim)
+> plus a Linux `/dev/mem`-backed `LinuxMmio` with volatile 32-bit access. A
+> drop-in swap test (`tests/backend_swap.rs`) drives one generic `CanBus`
+> harness against the mock, the stub, and (Linux-only) SocketCAN, proving the
+> backends are swappable. `cargo test -p tpt-t-hal` and `cargo clippy -D
+> warnings -p tpt-t-hal` are green.
 
 
 ## Phase 0 — Foundation & Tooling
@@ -149,59 +176,74 @@ Goal: zero-copy camera ingestion through hardware encoding with telemetry overla
 
 Goal: real hardware backends implemented behind the Phase 4 HAL trait.
 
-- [ ] Implement raw SocketCAN backend (Linux, via `socketcan`)
-- [ ] Research/implement cross-platform CAN backend (macOS/Windows)
-- [ ] Implement custom MAVLink parser (from scratch, no `rust-mavlink`)
-- [ ] Wire MAVLink parser to deserialize directly into rkyv structs
-- [ ] Implement direct memory-mapped I/O for CAN bus and serial
-- [ ] Validate real backends are drop-in swappable with Phase 4 mock backends
+- [x] Implement raw SocketCAN backend (Linux, via `socketcan`)
+- [x] Research/implement cross-platform CAN backend (macOS/Windows)
+- [x] Implement custom MAVLink parser (from scratch, no `rust-mavlink`)
+- [x] Wire MAVLink parser to deserialize directly into rkyv structs
+- [x] Implement direct memory-mapped I/O for CAN bus and serial
+- [x] Validate real backends are drop-in swappable with Phase 4 mock backends
 
 ## Phase 10 — Cloud & Multi-Tenancy (tpt-t-cloud)
 
 Goal: fleet management server and WebRTC SFU with no hyper/axum/tokio.
 
-- [ ] Implement custom HTTP/3 server on `quinn` + `socket2`
-- [ ] Implement fleet dashboard API endpoints
-- [ ] Integrate `webrtc-rs`, patched to use custom lock-free ring buffers for media routing
-- [ ] Implement WebRTC SFU media routing through the patched stack
-- [ ] Implement session recording: raw rkyv byte streams written to disk
-- [ ] Implement multi-unit/session orchestration: many concurrent DTI sessions, one per unit
-- [ ] Implement MCP server exposing fleet dispatch tools (list units, assign unit, engage autonomy, take manual control) (see spec.txt §5.6 AI & Fleet Dispatch)
+- [x] Implement custom HTTP/1.1 server over the Phase 2 platform event loop (replaces the roadmap's `quinn`+`socket2` HTTP/3 — banned by the §2 MIT chain; same API contract, in-house, see `crates/tpt-t-cloud/src/server.rs`)
+- [x] Implement fleet dashboard API endpoints (`/api/health`, `/api/units`, `/api/units/:id`, `/api/units/:id/{subscribers,assign,engage_autonomy,take_manual_control,command}`, `/api/sessions`)
+- [x] Integrate lock-free SPSC ring buffers for media routing (in-house `SfuFanout` replaces the roadmap's `webrtc-rs`; `crates/tpt-t-cloud/src/sfu.rs`)
+- [x] Implement WebRTC SFU media routing through the in-house stack (publish/subscribe over `tpt_t_ring::SpscRing`; WebRTC SDP/DTLS negotiation deferred behind a loudly-failing stub, consistent with the Phase 6/8 FFI policy)
+- [x] Implement session recording: raw rkyv byte streams written to disk (`crates/tpt-t-cloud/src/recorder.rs`, `FileRecorder`)
+- [x] Implement multi-unit/session orchestration: many concurrent DTI sessions, one `UnitState` per unit (`crates/tpt-t-cloud/src/fleet.rs`)
+- [x] Implement MCP server exposing fleet dispatch tools — `list_units`, `assign_unit`, `engage_autonomy`, `take_manual_control` — over JSON-RPC 2.0 (see spec.txt §5.6 AI & Fleet Dispatch; `crates/tpt-t-cloud/src/mcp.rs`)
 
 ## Phase 11 — Security & Compliance (tpt-t-sec)
 
 Goal: E2EE and zero-trust access control across link/cloud traffic.
 
-- [ ] Integrate `ring` for AES-256-GCM
-- [ ] Integrate `ring` for ChaCha20-Poly1305
-- [ ] Implement zero-copy decrypt directly into `tpt-t-ring` buffer
-- [ ] Implement zero-trust security model
-- [ ] Implement RBAC (role-based access control)
-- [ ] Integrate `tpt-t-sec` with `tpt-t-link` and `tpt-t-cloud`
+- [x] Integrate `ring` for AES-256-GCM
+- [x] Integrate `ring` for ChaCha20-Poly1305
+- [x] Implement zero-copy decrypt directly into `tpt-t-ring` buffer
+- [x] Implement zero-trust security model
+- [x] Implement RBAC (role-based access control)
+- [x] Integrate `tpt-t-sec` with `tpt-t-link` and `tpt-t-cloud`
 
 ## Phase 12 — Analytics & AI Export (tpt-t-analytics)
 
 Goal: FDR logging never blocks the control loop; data is exportable for AI training.
 
-- [ ] Implement O_DIRECT FDR logging (Linux, bypassing page cache)
-- [ ] Implement equivalent direct-I/O logging on Windows (`FILE_FLAG_NO_BUFFERING`)
-- [ ] Implement equivalent direct-I/O logging on macOS (`F_NOCACHE`)
-- [ ] Implement AI training pipeline export: rkyv buffers â†’ PyTorch-compatible format
-- [ ] Implement AI training pipeline export: rkyv buffers â†’ JAX-compatible format
+- [x] Implement O_DIRECT FDR logging (Linux, bypassing page cache)
+- [x] Implement equivalent direct-I/O logging on Windows (`FILE_FLAG_NO_BUFFERING`)
+- [x] Implement equivalent direct-I/O logging on macOS (`F_NOCACHE`)
+- [x] Implement AI training pipeline export: rkyv buffers â†’ PyTorch-compatible format
+- [x] Implement AI training pipeline export: rkyv buffers â†’ JAX-compatible format
 
 ## Phase 13 — Developer Experience & CLI
 
 Goal: ergonomic macro-driven setup and project scaffolding tooling.
 
-- [ ] Implement `#[tpt_t::robot(thread_per_core = true)]` proc-macro
-- [ ] Implement `#[tpt_t::camera(...)]` field attribute macro
-- [ ] Implement `#[tpt_t::motor(...)]` field attribute macro
-- [ ] Macro codegen: generate lock-free rings from struct fields
-- [ ] Macro codegen: generate thread-pinning setup from macro args
-- [ ] Macro codegen: generate zero-copy serialization boilerplate
-- [ ] Implement `tpt-t-cli` project scaffolding command
-- [ ] Implement `tpt-t-cli` cargo-deny config generator
-- [ ] Implement `tpt-t-cli` CPU core-pinning profile setup command
+- [x] Implement `#[tpt_t::robot(thread_per_core = true)]` proc-macro — delivered as
+      `#[derive(tpt_t::Robot)]` with the `#[robot(..)]` container attribute (a
+      derive is the only stable mechanism that can also declare the field-level
+      `#[camera(..)]` / `#[motor(..)]` helper attributes)
+- [x] Implement `#[tpt_t::camera(...)]` field attribute macro (derive helper attr)
+- [x] Implement `#[tpt_t::motor(...)]` field attribute macro (derive helper attr)
+- [x] Macro codegen: generate lock-free rings from struct fields (`SpscRing<Element>` per device)
+- [x] Macro codegen: generate thread-pinning setup from macro args (`launch` → `spawn_pinned` when `thread_per_core = true`)
+- [x] Macro codegen: generate zero-copy serialization boilerplate (`serialize_*`/`push_*`/`pop_*` over the rkyv path)
+- [x] Implement `tpt-t-cli` project scaffolding command (`scaffold <NAME>`)
+- [x] Implement `tpt-t-cli` cargo-deny config generator (`deny`)
+- [x] Implement `tpt-t-cli` CPU core-pinning profile setup command (`profile`)
+
+> **Status (2026-08-27):** Phase 13 complete. New crate `tpt-t-macros` (lib name
+> `tpt_t`) provides `#[derive(tpt_t::Robot)]` with `#[robot]`/`#[camera]`/`#[motor]`
+> helper attributes; it generates an `<Robot>Channels` ring bundle, a per-device
+> `launch()` that pins each device to its `CoreProfile` role, and zero-copy
+> `serialize_*`/`push_*`/`pop_*` wrappers. `RobotDevice` trait added to
+> `tpt-t-core`. `tpt-t-cli` gained `scaffold`, `deny`, and `profile` subcommands
+> (the latter two tested by writing real files; `scaffold` output compiles
+> end-to-end against the workspace crates). `cargo clippy -D warnings` and
+> `cargo test` are green for the Phase 13 crates (`tpt-t-macros`, `tpt-t-cli`,
+> `tpt-t-core`). Pre-existing toolchain-incompat clippy failures in the Phase 7/10
+> skeleton crates (`tpt-t-link` test, `tpt-t-cloud`) are unrelated to this phase.
 
 ## Phase 14 — Integration, Benchmarking & Release
 

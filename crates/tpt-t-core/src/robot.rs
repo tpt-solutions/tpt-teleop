@@ -1,0 +1,27 @@
+//! Runtime support for robots assembled via the `#[derive(tpt_t::Robot)]`
+//! proc-macro (spec §13 — Developer Experience & CLI).
+//!
+//! The `Robot` derive turns a struct whose fields are tagged `#[camera(..)]`
+//! or `#[motor(..)]` into a fully-wired robot: it generates lock-free SPSC
+//! channels for each device, a thread-per-core pinning harness, and zero-copy
+//! serialization wrappers. Every generated device thread is driven by this
+//! trait — the macro moves each tagged field into a pinned thread and calls
+//! [`RobotDevice::run`] on it.
+
+/// A device a robot owns and runs on its own pinned core.
+///
+/// The `#[derive(tpt_t::Robot)]` codegen moves each `#[camera]`/`#[motor]`
+/// field into a dedicated, CPU-pinned thread and invokes `run(self)` once the
+/// thread starts. Implementors are responsible for their own loop; returning
+/// from `run` ends that device's thread.
+///
+/// # Safety / lifetime contract
+///
+/// `run(self)` takes ownership so the device is `'static` for the spawned
+/// thread without borrowing the parent struct. Field types must therefore be
+/// `Send + 'static`.
+pub trait RobotDevice: Send + 'static {
+    /// Runs the device on its dedicated, pinned core. Called exactly once per
+    /// device thread; returning ends the thread.
+    fn run(self);
+}

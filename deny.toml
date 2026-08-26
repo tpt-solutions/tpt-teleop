@@ -142,6 +142,12 @@ expression = "MIT"
 name = "windows_x86_64_msvc"
 expression = "MIT"
 
+# `ring`'s (ISC) build script pulls this dual MIT/Apache-2.0 crate; force MIT
+# so the Apache-2.0 grant is never relied upon.
+[[licenses.clarify]]
+name = "cc"
+expression = "MIT"
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

@@ -7,6 +7,9 @@
 //! volatile 32-bit register access so register writes are never elided.
 
 /// A memory-mapped register window.
+#[cfg(target_os = "linux")]
+use crate::types::HalError;
+
 pub trait Mmio {
     /// Reads a 32-bit register at byte `offset` (must be 4-aligned).
     fn read_u32(&self, offset: usize) -> u32;

@@ -93,6 +93,10 @@ pub enum Event {
     Ice(Vec<u8>, SocketAddr),
     /// A neighbor appeared or advanced its beacon sequence.
     NeighborUp(u64, SocketAddr),
+    /// An E2EE envelope (sealed bytes) for the security layer to open
+    /// (`tpt-t-sec`). Delivered verbatim; zero-copy decrypt lands in the
+    /// consumer's ring buffer via the crypto helpers.
+    Secure(Vec<u8>, SocketAddr),
 }
 
 impl core::fmt::Debug for Event {
@@ -121,6 +125,11 @@ impl core::fmt::Debug for Event {
             Event::NeighborUp(id, addr) => {
                 f.debug_tuple("NeighborUp").field(id).field(addr).finish()
             }
+            Event::Secure(b, from) => f
+                .debug_struct("Secure")
+                .field("len", &b.len())
+                .field("from", from)
+                .finish(),
         }
     }
 }
@@ -507,6 +516,7 @@ impl Session<'_> {
                 Ice(Vec<u8>, SocketAddr),
                 Beacon(MeshBeacon, SocketAddr),
                 Ack(crate::reliable::AckFrame),
+                Secure(Vec<u8>, SocketAddr),
             }
             let frame = match self.core.mux.recv_frame(&mut self.core.rx) {
                 Ok(Some(Ok(inbound))) => match inbound {
@@ -528,6 +538,7 @@ impl Session<'_> {
                     ),
                     Inbound::Ice { payload, from } => Frame::Ice(payload.to_vec(), from),
                     Inbound::Mesh { beacon, from } => Frame::Beacon(beacon, from),
+                    Inbound::Secure { sealed, from } => Frame::Secure(sealed.to_vec(), from),
                     Inbound::Ack { ack, .. } => Frame::Ack(ack),
                 },
                 Ok(Some(Err(e))) => {
@@ -565,6 +576,7 @@ impl Session<'_> {
                 }
                 Frame::Tlm(pkt, from) => Some(Event::Telemetry(pkt, from)),
                 Frame::Ice(bytes, from) => Some(Event::Ice(bytes, from)),
+                Frame::Secure(sealed, from) => Some(Event::Secure(sealed, from)),
                 Frame::Beacon(beacon, src) => {
                     // Reply address comes from the beacon payload
                     // (authoritative listen port), not the datagram source.

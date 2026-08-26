@@ -414,8 +414,8 @@ mod tests {
         // Build a v2 ATTITUDE frame.
         let mut payload = [0u8; 28];
         payload[0..4].copy_from_slice(&1000u32.to_le_bytes());
-        payload[4..8].copy_from_slice(&0.5f32.to_le_bytes());
-        payload[8..12].copy_from_slice(&(-0.25f32).to_le_bytes());
+        payload[4..8].copy_from_slice(&0.5f32.to_le_bytes()); // roll
+        payload[12..16].copy_from_slice(&(-0.25f32).to_le_bytes()); // yaw
         let mut buf = vec![MAVLINK_2_MAGIC, 28, 0, 0, 4, 1, 1];
         buf.extend_from_slice(&30u32.to_le_bytes()); // msgid 30 (3 bytes)
         buf.extend_from_slice(&payload);

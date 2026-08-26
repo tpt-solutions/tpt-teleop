@@ -30,6 +30,7 @@ tpt-t-link = { path = "crates/tpt-t-link" }
 tpt-t-cloud = { path = "crates/tpt-t-cloud" }
 tpt-t-sec = { path = "crates/tpt-t-sec" }
 tpt-t-analytics = { path = "crates/tpt-t-analytics" }
+tpt-t-macros = { path = "crates/tpt-t-macros" }
 
 # Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
 # Members gate these behind [target.'cfg(...)'.dependencies] as needed;
@@ -44,6 +45,7 @@ windows-sys = { version = "0.60", features = [
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
     "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Security",
 ] }
 
 [profile.release]

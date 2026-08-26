@@ -37,10 +37,10 @@ pub use types::{
 };
 
 #[cfg(target_os = "linux")]
-pub use socketcan::SocketCan;
-#[cfg(target_os = "linux")]
 pub use mmio::LinuxMmio;
 pub use mmio::{BufferMmio, Mmio};
+#[cfg(target_os = "linux")]
+pub use socketcan::SocketCan;
 
 /// Crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

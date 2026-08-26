@@ -52,7 +52,9 @@ Subsystems (depend on foundation only):
   ships a rapier-based physics simulator backend plus real SocketCAN/MAVLink
   backends.
 * **tpt-t-cloud**, **tpt-t-sec**, **tpt-t-analytics** provide
-  fleet HTTP/3 + SFU, zero-trust E2EE, and direct-I/O FDR logging respectively.
+  fleet HTTP/3 + SFU, zero-trust E2EE, and direct-I/O FDR logging with AI
+  export respectively.
+
 
 ## 2. Threading Model — Thread Per Core
 
@@ -113,6 +115,35 @@ From `spec.txt` §6:
   `tpt-t-ring::cast` (byte slice ↔ struct casting) when both ends share
   endianness/layout — e.g. shared-memory IPC on the same machine.
 * Every frame carries a magic/version header for forward compatibility.
+
+## 5.1. Flight Data Recorder & AI Export (tpt-t-analytics)
+
+FDR logging must never stall the control loop, so the hot path never touches
+disk. Each subsystem publishes a fixed-size [`FdrEntry`](crates/tpt-t-analytics/src/record.rs)
+(a `repr(C)` header + inline payload carrying the rkyv wire bytes of a
+`ControlCommand` / telemetry sample) through a wait-free
+[`tpt-t-ring::SpscRing`](crates/tpt-t-ring/src/spsc.rs). A full ring returns
+`RecordError::Full` immediately — the producer sheds the record rather than
+block. A dedicated storage thread (role "Storage/FDR" in the core-pinning
+profile) drains the ring and writes the bytes to a
+[`DirectFile`](crates/tpt-t-analytics/src/direct_io.rs) that bypasses the page
+cache via OS direct I/O:
+
+* Linux — `O_DIRECT` (falls back to buffered if the filesystem rejects it).
+* Windows — `CreateFileA` with `FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`
+  (note: `FILE_GENERIC_WRITE` is avoided because it implies `FILE_APPEND_DATA`,
+  which is incompatible with unbuffered I/O).
+* macOS — `F_NOCACHE` via `fcntl`.
+
+All three stage bytes into a 4096-byte-aligned buffer and flush in
+sector-multiple blocks. An end-of-stream marker lets offline readers stop
+before the zero-padding direct I/O appends to the final sector.
+
+The AI export path is fully offline: an FDR file (or in-memory entries) is
+parsed back into wire structs and turned into feature/label tensors
+serialized as NumPy `.npy` — the interchange format both PyTorch
+(`numpy.load` → `torch.from_numpy`) and JAX (`numpy.load` → `jnp.asarray`)
+consume natively, so a single writer serves both (spec §5.8).
 
 ## 6. Licensing & Dependency Policy
 

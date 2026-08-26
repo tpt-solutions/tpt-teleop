@@ -12,7 +12,7 @@
 
 use std::ffi::CString;
 
-use libc::{self, c_int, AF_CAN, CAN_RAW, O_NONBLOCK, SOCK_RAW};
+use libc::{self, AF_CAN, CAN_RAW, O_NONBLOCK, SOCK_RAW, c_int};
 
 use crate::can::CanBus;
 use crate::types::{CanFrame, HalError};
@@ -34,8 +34,8 @@ impl SocketCan {
         if fd < 0 {
             return Err(HalError::Device("socket(AF_CAN) failed"));
         }
-        let name = CString::new(iface)
-            .map_err(|_| HalError::Device("interface name not C-string"))?;
+        let name =
+            CString::new(iface).map_err(|_| HalError::Device("interface name not C-string"))?;
         // SAFETY: if_nametoindex reads the NUL-terminated name, returns an
         // index (0 on unknown interface).
         let ifindex = unsafe { libc::if_nametoindex(name.as_ptr()) };
@@ -74,19 +74,11 @@ impl CanBus for SocketCan {
     fn send(&mut self, frame: &CanFrame) -> Result<(), HalError> {
         let len = frame.len.min(8) as usize;
         let id = frame.id;
-        let can_id = if id > 0x7FF {
-            id | CAN_EFF_FLAG
-        } else {
-            id
-        };
-        let mut cf = libc::can_frame {
-            can_id,
-            can_dlc: len as u8,
-            __pad: 0,
-            __res0: 0,
-            __res1: 0,
-            data: [0u8; 8],
-        };
+        let can_id = if id > 0x7FF { id | CAN_EFF_FLAG } else { id };
+        // SAFETY: zeroed can_frame; we set id, length, and payload only.
+        let mut cf: libc::can_frame = unsafe { std::mem::zeroed() };
+        cf.can_id = can_id;
+        cf.len8_dlc = len as u8;
         cf.data[..len].copy_from_slice(&frame.data[..len]);
         // SAFETY: send(2) over a valid fd with a properly-sized can_frame.
         let n = unsafe {

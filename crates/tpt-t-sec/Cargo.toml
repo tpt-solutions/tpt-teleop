@@ -10,6 +10,15 @@ description = "Zero-trust security model, RBAC, E2EE via ring AES-GCM / ChaCha20
 
 [dependencies]
 tpt-t-core = { workspace = true }
+tpt-t-ring = { workspace = true }
+tpt-t-link = { workspace = true }
+tpt-t-cloud = { workspace = true }
+# ISC-licensed (MIT-chain compatible per spec §2). `cc` build-dep is clarified
+# to MIT in deny.toml.
+ring = "0.17"
+
+[dev-dependencies]
+tpt-t-core = { workspace = true }
 
 [lints]
 workspace = true

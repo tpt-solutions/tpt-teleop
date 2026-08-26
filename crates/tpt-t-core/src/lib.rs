@@ -24,10 +24,12 @@ pub mod mpmc;
 pub mod pool;
 pub mod prelude;
 pub mod profile;
+pub mod robot;
 pub mod ser;
 
 pub use machine::StateMachine;
 pub use mode::{Mode, ModeError, Transition, TransitionTable};
+pub use robot::RobotDevice;
 
 /// Crate version (from Cargo metadata).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

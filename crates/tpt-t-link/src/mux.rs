@@ -74,6 +74,9 @@ pub enum Channel {
     Ice = 4,
     /// Swarm neighbor-discovery beacons ([`MeshBeacon`]).
     Mesh = 5,
+    /// E2EE envelope (AEAD ciphertext+tag, see `tpt-t-sec`) carrying any
+    /// channel's payload under the negotiated session key (spec §5.5).
+    Secure = 6,
 }
 
 impl Channel {
@@ -92,6 +95,7 @@ impl Channel {
             3 => Some(Channel::Media),
             4 => Some(Channel::Ice),
             5 => Some(Channel::Mesh),
+            6 => Some(Channel::Secure),
             _ => None,
         }
     }
@@ -174,6 +178,14 @@ pub enum Inbound<'a> {
         /// Sender address.
         from: SocketAddr,
     },
+    /// E2EE envelope: opaque AEAD bytes (nonce‖ciphertext‖tag) carrying a
+    /// session-encrypted payload (decrypted by `tpt-t-sec`).
+    Secure {
+        /// Raw sealed bytes (decrypted by the security layer).
+        sealed: &'a [u8],
+        /// Sender address.
+        from: SocketAddr,
+    },
 }
 
 impl fmt::Debug for Inbound<'_> {
@@ -204,6 +216,7 @@ impl fmt::Debug for Inbound<'_> {
                 .field("base_seq", &ack.base_seq)
                 .field("from", from)
                 .finish(),
+            Inbound::Secure { from, .. } => f.debug_struct("Secure").field("from", from).finish(),
         }
     }
 }
@@ -435,6 +448,25 @@ impl UdpMux {
         Ok(Self::finish_frame(out, HEADER_LEN + bytes.len()))
     }
 
+    /// Assembles an E2EE envelope datagram: `sealed` (the `tpt-t-sec` AEAD
+    /// output: nonce‖ciphertext‖tag) is forwarded verbatim for the security
+    /// layer to open on the peer. Rejected if it exceeds the MTU.
+    pub fn write_secure_frame(
+        &mut self,
+        sealed: &[u8],
+        out: &mut [u8; MAX_DATAGRAM],
+    ) -> io::Result<usize> {
+        if sealed.len() > MAX_PAYLOAD {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "secure payload exceeds MTU",
+            ));
+        }
+        out[HEADER_LEN..HEADER_LEN + sealed.len()].copy_from_slice(sealed);
+        Self::write_header(out, Channel::Secure, 0, sealed.len() as u16);
+        Ok(Self::finish_frame(out, HEADER_LEN + sealed.len()))
+    }
+
     // -- transmit ---------------------------------------------------------
 
     /// Sends an already-framed buffer; feeds stats/backpressure.
@@ -600,6 +632,10 @@ impl UdpMux {
             Some(Channel::Mesh) => MeshBeacon::decode(payload)
                 .map(|beacon| Inbound::Mesh { beacon, from })
                 .ok_or(FrameError::Payload),
+            Some(Channel::Secure) => Ok(Inbound::Secure {
+                sealed: payload,
+                from,
+            }),
             // Media demux lands with Phase 8; unknown channels are
             // protocol-version skew — drop loudly via counters.
             Some(Channel::Media) | None => Err(FrameError::Payload),
@@ -685,6 +721,9 @@ mod tests {
                         Inbound::Ice { payload, from } => Ev::Ice(payload.to_vec(), from),
                         Inbound::Mesh { beacon, from } => Ev::Mesh(beacon, from),
                         Inbound::Ack { ack, from } => Ev::Ack(ack, from),
+                        Inbound::Secure { .. } => {
+                            panic!("test helper does not model Secure envelopes")
+                        }
                     };
                 }
                 Some(Err(e)) => panic!("unexpected reject: {e}"),

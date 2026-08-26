@@ -6,9 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Minimal HTTP/3 fleet server and WebRTC SFU on quinn + socket2 (tpt-teleop)"
+description = "Fleet management server, WebRTC SFU, session recording and MCP dispatch for tpt-teleop (in-house; no hyper/axum/tokio, no Apache-only transports)"
 
 [dependencies]
+tpt-t-core = { workspace = true }
+tpt-t-ring = { workspace = true }
+tpt-t-link = { workspace = true }
+
+[dev-dependencies]
 tpt-t-core = { workspace = true }
 
 [lints]

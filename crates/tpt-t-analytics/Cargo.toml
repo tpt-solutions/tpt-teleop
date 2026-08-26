@@ -10,6 +10,17 @@ description = "Direct-I/O flight data recorder and AI training pipeline export (
 
 [dependencies]
 tpt-t-core = { workspace = true }
+tpt-t-ring = { workspace = true }
+
+# Platform direct-I/O backends (MIT-chain only, per deny.toml).
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[dev-dependencies]
+tpt-t-core = { workspace = true }
 
 [lints]
 workspace = true
