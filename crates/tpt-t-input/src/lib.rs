@@ -6,6 +6,7 @@
 //! (overlapped reads) are live; macOS IOKit is a documented stub; OpenXR
 //! exposes its integration trait with a null source until a runtime ships.
 
+pub mod ai_source;
 pub mod copilot;
 pub mod evdev_parse;
 pub mod haptics;
@@ -21,6 +22,7 @@ pub mod source;
 pub mod win_hid;
 pub mod xr;
 
+pub use ai_source::{AiCommandSource, CommandSource, Origin};
 pub use copilot::{CoPilotHub, MAX_OPERATORS};
 pub use haptics::{HapticEffect, HapticRouter, HapticSink, MockHaptics};
 #[cfg(target_os = "linux")]
@@ -28,7 +30,7 @@ pub use linux_evdev::EvdevSource;
 #[cfg(target_os = "macos")]
 pub use macos_hid::MacHidSource;
 pub use map::ControllerMap;
-pub use pipeline::InputStage;
+pub use pipeline::{CommandStage, InputStage};
 pub use report::{ControllerReport, DeviceInfo, slot};
 pub use source::{InputError, RawInputSource};
 #[cfg(windows)]

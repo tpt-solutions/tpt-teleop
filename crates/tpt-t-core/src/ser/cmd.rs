@@ -7,6 +7,9 @@ use crate::mode::Mode;
 /// Magic for [`ControlCommand`] (`"CMD"` + rev 1).
 pub const MAGIC_COMMAND: u32 = 0x434D_4401;
 
+/// Flag bit 1: command authored by an AI source (see [`is_ai_origin`]).
+pub const FLAG_AI_ORIGIN: u8 = 0b0000_0010;
+
 /// Operator/autonomy command packet.
 ///
 /// Layout is fixed `#[repr(C)]`, **zero padding including tail** (the
@@ -71,6 +74,25 @@ impl ControlCommand {
     /// by the safety loop).
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode.as_u8();
+    }
+
+    /// True when the [`FLAG_AI_ORIGIN`] flag is raised (spec §5.1 AI Input
+    /// Source tagging).
+    #[inline]
+    pub fn is_ai_origin(&self) -> bool {
+        self.flags & FLAG_AI_ORIGIN != 0
+    }
+
+    /// Raises the AI-origin tag.
+    #[inline]
+    pub fn set_ai_origin(&mut self) {
+        self.flags |= FLAG_AI_ORIGIN;
+    }
+
+    /// Clears the AI-origin tag (human-authored default).
+    #[inline]
+    pub fn clear_ai_origin(&mut self) {
+        self.flags &= !FLAG_AI_ORIGIN;
     }
 }
 

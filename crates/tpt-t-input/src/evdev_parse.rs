@@ -4,7 +4,7 @@
 //! normalization math, and event application are unit-testable on every
 //! host (the syscalls live in [`crate::linux_evdev`]).
 
-use crate::report::{slot, ControllerReport};
+use crate::report::{ControllerReport, slot};
 
 /// event types
 pub const EV_SYN: u16 = 0x00;
@@ -58,13 +58,14 @@ pub fn decode_event(buf: &[u8], off: usize) -> Option<EvdevEvent> {
     let tv_usec = rd(8) as i64;
     let lo = u16::from_le_bytes([buf[off + 16], buf[off + 17]]);
     let code = u16::from_le_bytes([buf[off + 18], buf[off + 19]]);
-    let value = i32::from_le_bytes([
-        buf[off + 20],
-        buf[off + 21],
-        buf[off + 22],
-        buf[off + 23],
-    ]);
-    Some(EvdevEvent { tv_sec, tv_usec, kind: lo, code, value })
+    let value = i32::from_le_bytes([buf[off + 20], buf[off + 21], buf[off + 22], buf[off + 23]]);
+    Some(EvdevEvent {
+        tv_sec,
+        tv_usec,
+        kind: lo,
+        code,
+        value,
+    })
 }
 
 /// Accumulates decoded events into a report under per-axis calibration
@@ -120,7 +121,11 @@ impl EvdevAccumulator {
         let (min, max) = self.calib[slot_idx.min(7)];
         let span = (max - min).max(1);
         let norm = ((value - min) as f32 / span as f32) * 2.0 - 1.0;
-        self.axes[slot_idx] = if invert { -norm.clamp(-1.0, 1.0) } else { norm.clamp(-1.0, 1.0) };
+        self.axes[slot_idx] = if invert {
+            -norm.clamp(-1.0, 1.0)
+        } else {
+            norm.clamp(-1.0, 1.0)
+        };
         true
     }
 
@@ -150,8 +155,8 @@ impl EvdevAccumulator {
     pub fn snapshot(&self, out: &mut ControllerReport) {
         out.axes = self.axes;
         out.buttons = self.buttons;
-        out.timestamp_ns =
-            (self.last_time.0 as u64).wrapping_mul(1_000_000_000)
-                .wrapping_add(self.last_time.1 as u64);
+        out.timestamp_ns = (self.last_time.0 as u64)
+            .wrapping_mul(1_000_000_000)
+            .wrapping_add(self.last_time.1 as u64);
     }
 }

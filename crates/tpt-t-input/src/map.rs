@@ -1,9 +1,8 @@
 //! Universal controller abstraction: semantic mapping onto reports.
 
 use tpt_t_core::ser::ControlCommand;
-use tpt_t_core::Mode;
 
-use crate::report::{slot, ControllerReport};
+use crate::report::{ControllerReport, slot};
 
 /// Mapping from raw device axes/buttons to semantic command channels.
 ///
@@ -67,12 +66,9 @@ impl ControllerMap {
             shaped * sgn(inv)
         };
 
-        out.axes[axis::ROLL] =
-            g(self.roll_slot, self.invert_roll);
-        out.axes[axis::PITCH] =
-            g(self.pitch_slot, self.invert_pitch);
-        out.axes[axis::YAW] =
-            g(self.yaw_slot, self.invert_yaw);
+        out.axes[axis::ROLL] = g(self.roll_slot, self.invert_roll);
+        out.axes[axis::PITCH] = g(self.pitch_slot, self.invert_pitch);
+        out.axes[axis::YAW] = g(self.yaw_slot, self.invert_yaw);
 
         // Throttle: remap [-1,1] device space to [0,1] command space.
         let thr = report
@@ -82,7 +78,6 @@ impl ControllerMap {
             .unwrap_or(0.0)
             .clamp(-1.0, 1.0);
         out.axes[axis::THROTTLE] = (thr * 0.5 + 0.5).clamp(0.0, 1.0);
-
     }
 }
 
@@ -99,14 +94,18 @@ pub mod axis {
     pub const THROTTLE: usize = 3;
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use tpt_t_core::Mode;
+
     fn report(axes: [f32; 8]) -> ControllerReport {
-        ControllerReport { seq: 1, buttons: 0, axes, timestamp_ns: 42 }
+        ControllerReport {
+            seq: 1,
+            buttons: 0,
+            axes,
+            timestamp_ns: 42,
+        }
     }
 
     #[test]
@@ -121,11 +120,9 @@ mod tests {
             (0.5 - 0.04) / 0.96,
             "deadzone rescales: full-range stays full after edge trim"
         );
-        assert!(out.axes[1] < -0.2);       // pitch (deadzone edge rescale)
-        assert_eq!(out.axes[2], 1.0);      // yaw saturates
-        assert_eq!(out.axes[3], 0.0);      // throttle -1 → 0.0
-        
-        
+        assert!(out.axes[1] < -0.2); // pitch (deadzone edge rescale)
+        assert_eq!(out.axes[2], 1.0); // yaw saturates
+        assert_eq!(out.axes[3], 0.0); // throttle -1 → 0.0
     }
 
     #[test]
@@ -142,7 +139,10 @@ mod tests {
 
     #[test]
     fn invert_flags_negate_channels() {
-        let m = ControllerMap { invert_pitch: true, ..ControllerMap::default() };
+        let m = ControllerMap {
+            invert_pitch: true,
+            ..ControllerMap::default()
+        };
         let mut out = ControlCommand::zeroed(Mode::FullTeleop);
         m.apply(&report([0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]), &mut out);
         assert_eq!(out.axes[1], -(0.5 - 0.04) / 0.96);

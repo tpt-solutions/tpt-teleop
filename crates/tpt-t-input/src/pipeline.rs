@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tpt_t_core::ser::ControlCommand;
 use tpt_t_ring::SpscRing;
 
+use crate::ai_source::{CommandSource, Origin};
 use crate::haptics::{HapticEffect, HapticRouter};
 use crate::map::ControllerMap;
 use crate::report::ControllerReport;
@@ -44,6 +45,7 @@ impl<S: RawInputSource> InputStage<S> {
             return None;
         }
         let mut cmd = ControlCommand::zeroed(tpt_t_core::Mode::FullTeleop);
+        cmd.clear_ai_origin();
         cmd.timestamp_ns = now_ns;
         self.map.apply(&self.scratch_report, &mut cmd);
 
@@ -59,5 +61,34 @@ impl<S: RawInputSource> InputStage<S> {
     /// Immutable view of the mapper.
     pub fn mapper(&self) -> &ControllerMap {
         &self.map
+    }
+}
+
+/// Stage for non-human producers (AI planner / autonomy stack). Commands
+/// arrive already tagged with their origin and flow into the same ring the
+/// safety loop drains — identical plumbing, per spec §5.1 AI Input Source.
+pub struct CommandStage<S: CommandSource> {
+    source: S,
+    ring: Arc<SpscRing<ControlCommand>>,
+}
+
+impl<S: CommandSource> CommandStage<S> {
+    /// Wires the source into `ring`.
+    pub fn new(source: S, ring: Arc<SpscRing<ControlCommand>>) -> Self {
+        Self { source, ring }
+    }
+
+    /// Polls the source; on a fresh command, stamps the tick timestamp and
+    /// queues it. Returns the command when one was produced.
+    pub fn tick(&mut self, now_ns: u64) -> Option<ControlCommand> {
+        let mut cmd = self.source.next_command(now_ns)?;
+        cmd.timestamp_ns = now_ns;
+        self.ring.push(cmd).ok()?;
+        Some(cmd)
+    }
+
+    /// Origin tag of the wrapped source.
+    pub fn origin(&self) -> Origin {
+        self.source.origin()
     }
 }

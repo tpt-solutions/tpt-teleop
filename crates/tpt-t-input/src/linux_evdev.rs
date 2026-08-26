@@ -3,7 +3,7 @@
 
 use std::ffi::CString;
 
-use super::evdev_parse::{decode_event, EvdevAccumulator, EVENT_SIZE};
+use super::evdev_parse::{EVENT_SIZE, EvdevAccumulator, decode_event};
 use crate::report::{ControllerReport, DeviceInfo};
 use crate::source::{InputError, RawInputSource};
 
@@ -73,7 +73,10 @@ impl EvdevSource {
         let c = CString::new(path).map_err(|_| InputError::BadPath("nul in path"))?;
         // SAFETY: path is a valid NUL-terminated C string.
         let fd = unsafe {
-            libc::open(c.as_ptr(), libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC)
+            libc::open(
+                c.as_ptr(),
+                libc::O_RDONLY | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
         };
         if fd < 0 {
             return Err(InputError::Os(std::io::Error::last_os_error().to_string()));
@@ -93,9 +96,7 @@ impl EvdevSource {
         unsafe {
             for (slot_i, &code) in CAL_CODES.iter().enumerate() {
                 let mut ai = InputAbsInfo::default();
-                if libc::ioctl(fd, eviocg_abs(code as u32), &mut ai as *mut InputAbsInfo)
-                    == 0
-                {
+                if libc::ioctl(fd, eviocg_abs(code as u32), &mut ai as *mut InputAbsInfo) == 0 {
                     acc.calib[slot_i.min(7)] = (ai.minimum, ai.maximum);
                 }
             }
@@ -120,8 +121,7 @@ impl EvdevSource {
         let mut got_any = false;
         loop {
             // SAFETY: read into our stack buffer; fd owned by self.
-            let n =
-                unsafe { libc::read(self.fd, buf.as_mut_ptr().cast(), buf.len()) };
+            let n = unsafe { libc::read(self.fd, buf.as_mut_ptr().cast(), buf.len()) };
             if n <= 0 {
                 break; // EAGAIN ⇒ drained; transient errors surface next tick
             }

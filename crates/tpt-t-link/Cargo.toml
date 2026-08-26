@@ -10,6 +10,8 @@ description = "Custom UDP multiplexer, io_uring networking, QUIC fallback, mesh 
 
 [dependencies]
 tpt-t-core = { workspace = true }
+tpt-t-ring = { workspace = true }
+rkyv = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

@@ -16,7 +16,9 @@ const READ_TIMEOUT_MS: u32 = 4; // ~200 Hz loop cadence
 /// Extracts `VID_xxxx` / `PID_xxxx` tokens from an interface path.
 pub fn parse_u16_hex(path: &str, tag: &str) -> u16 {
     let lower = path.to_ascii_lowercase();
-    let Some(i) = lower.find(&tag.to_ascii_lowercase()) else { return 0 };
+    let Some(i) = lower.find(&tag.to_ascii_lowercase()) else {
+        return 0;
+    };
     let hex: String = lower[i + tag.len()..]
         .chars()
         .take_while(|c| c.is_ascii_hexdigit())
@@ -43,7 +45,10 @@ impl WinHidSource {
         if handle.is_null() || handle as isize == -1 {
             return Err(InputError::Os("invalid handle".into()));
         }
-        Ok(Self { handle, info: info_from(path) })
+        Ok(Self {
+            handle,
+            info: info_from(path),
+        })
     }
 }
 
@@ -60,8 +65,9 @@ fn info_from(path: &str) -> DeviceInfo {
 impl RawInputSource for WinHidSource {
     fn poll(&mut self, out: &mut ControllerReport) -> bool {
         let mut buf = [0u8; REPORT_LEN];
-        let mut ov: windows_sys::Win32::System::IO::OVERLAPPED =
-            unsafe { std::mem::zeroed() };
+        // SAFETY: zeroing a stack-resident OVERLAPPED is always valid; the
+        // event handle is attached below.
+        let mut ov: windows_sys::Win32::System::IO::OVERLAPPED = unsafe { std::mem::zeroed() };
 
         let mut got: u32 = 0;
         // SAFETY: buffers/overlapped are stack-resident and outlive the call.
@@ -113,7 +119,6 @@ impl RawInputSource for WinHidSource {
         ))
     }
 }
-
 
 #[inline]
 fn unix_ns_now() -> u64 {

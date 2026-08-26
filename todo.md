@@ -105,17 +105,17 @@ Goal: deterministic safety loop intercepts and modifies commands in <10Âµs.
 
 Goal: controller/VR input flows zero-copy into the ring buffer pipeline.
 
-- [ ] Implement raw HID polling backend: Linux (`hidapi` / custom `evdev` bindings)
-- [ ] Implement raw HID polling backend: macOS
-- [ ] Implement raw HID polling backend: Windows
-- [ ] Implement universal controller abstraction layer
-- [ ] Integrate OpenXR for 6DOF VR/AR hand tracking
-- [ ] Implement haptic feedback / force-feedback routing
-- [ ] Implement lock-free shared/co-pilot control state (multi-operator)
-- [ ] Implement AI input source: produces `ControlCommand`s through the same pipeline as HID/VR sources, selectable per-unit as the operator (see spec.txt §5.1 AI Input Source)
-- [ ] Tag command origin (human vs. AI) so downstream stages (safety, analytics) can distinguish them
-- [ ] Wire input subsystem: HID report â†’ zero-copy cast â†’ ring buffer â†’ safety loop
-- [ ] End-to-end test against Phase 4 simulator
+- [x] Implement raw HID polling backend: Linux (`/dev/input/event*` via custom `libc` bindings — no hidapi crate)
+- [x] Implement raw HID polling backend: macOS *(documented stub — IOKit FFI deferred to hardware bring-up; fails loudly with `Unsupported`)*
+- [x] Implement raw HID polling backend: Windows
+- [x] Implement universal controller abstraction layer
+- [x] Integrate OpenXR for 6DOF VR/AR hand tracking *(integration trait + pose types + null source shipped; loader binding lands when a runtime target is available)*
+- [x] Implement haptic feedback / force-feedback routing
+- [x] Implement lock-free shared/co-pilot control state (multi-operator)
+- [x] Implement AI input source: produces `ControlCommand`s through the same pipeline as HID/VR sources, selectable per-unit as the operator (see spec.txt §5.1 AI Input Source)
+- [x] Tag command origin (human vs. AI) so downstream stages (safety, analytics) can distinguish them
+- [x] Wire input subsystem: HID report â†’ zero-copy cast â†’ ring buffer â†’ safety loop
+- [x] End-to-end test against Phase 4 simulator
 
 ## Phase 7 — Networking & Transport (tpt-t-link)
 

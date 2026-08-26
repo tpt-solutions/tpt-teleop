@@ -11,16 +11,26 @@ use tpt_t_hal::HalError;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HapticEffect {
     /// Dual-motor rumble: strong + weak motor gains (0..1), duration ms.
-    Rumble { strong: f32, weak: f32, duration_ms: u16 },
+    Rumble {
+        strong: f32,
+        weak: f32,
+        duration_ms: u16,
+    },
 }
 
 impl HapticEffect {
     /// Short strong pulse used for E-stop / hard-breach alerts.
-    pub const ALERT: HapticEffect =
-        HapticEffect::Rumble { strong: 1.0, weak: 0.6, duration_ms: 250 };
+    pub const ALERT: HapticEffect = HapticEffect::Rumble {
+        strong: 1.0,
+        weak: 0.6,
+        duration_ms: 250,
+    };
     /// Soft double-tap used for soft-warn proximity hints.
-    pub const WARN: HapticEffect =
-        HapticEffect::Rumble { strong: 0.25, weak: 0.1, duration_ms: 80 };
+    pub const WARN: HapticEffect = HapticEffect::Rumble {
+        strong: 0.25,
+        weak: 0.1,
+        duration_ms: 80,
+    };
 }
 
 /// A device that can render haptic effects.
@@ -47,7 +57,10 @@ pub struct MockHaptics {
 impl MockHaptics {
     /// Bounded recorder keeping the most recent `cap` effects.
     pub fn new(cap: usize) -> Self {
-        Self { log: Vec::new(), cap: cap.max(1) }
+        Self {
+            log: Vec::new(),
+            cap: cap.max(1),
+        }
     }
 
     /// Snapshot of recorded effects (oldest first).

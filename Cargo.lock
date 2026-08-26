@@ -353,7 +353,9 @@ version = "0.1.0"
 dependencies = [
  "io-uring",
  "libc",
+ "rkyv",
  "tpt-t-core",
+ "tpt-t-ring",
  "windows-sys",
 ]
 

@@ -16,7 +16,7 @@
 pub mod cmd;
 pub mod telemetry;
 
-pub use cmd::ControlCommand;
+pub use cmd::{ControlCommand, FLAG_AI_ORIGIN};
 pub use telemetry::{GpsSample, ImuSample, TelemetryKind, TelemetryPacket};
 
 use rkyv::{

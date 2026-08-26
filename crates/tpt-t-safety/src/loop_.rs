@@ -83,6 +83,7 @@ pub struct SafetyLoop {
     prev_z: f64,
     have_prev_z: bool,
     vz_est: f64,
+    brake_latched: bool,
 }
 
 // SAFETY: all shared state is atomic/ring-mediated; the pose snapshot is
@@ -114,6 +115,7 @@ impl SafetyLoop {
             prev_z: 0.0,
             have_prev_z: false,
             vz_est: 0.0,
+            brake_latched: false,
             veto: VetoGate::default(),
             cfg,
         }
@@ -249,17 +251,6 @@ impl SafetyLoop {
         // 2b) Shared-control AI veto: restrict-only, never injects intent.
         let _ = self.veto.apply(&mut cmd);
 
-        // 2c) Predictive vertical brake: start shedding climb *before* the
-        // ceiling, using braking distance v²/(2a) from the measured climb
-        // rate (spec §5.4 predictive avoidance). Hover-neutral throttle
-        // yields ~2 m/s² of downward authority on typical frames.
-        const CEILING_BRAKE_M_S2: f64 = 2.0;
-        let stop_dist = self.vz_est * self.vz_est / (2.0 * CEILING_BRAKE_M_S2);
-        if self.pose.z + stop_dist >= self.cfg.fence.max_alt_m
-            && cmd.axes[3] > crate::geo::THROTTLE_NEUTRAL
-        {
-            cmd.axes[3] = crate::geo::THROTTLE_NEUTRAL;
-        }
         // 3) Geofence projection (soft attenuate / hard suppress).
         let verdict = self.cfg.fence.evaluate(&self.pose);
         if verdict != FenceVerdict::Inside {
@@ -272,6 +263,41 @@ impl SafetyLoop {
 
         // 4) Kinematic limits: absolute clamps + slew vs last accepted.
         self.cfg.limits.apply(&self.last_out, &mut cmd);
+
+        // 4b) Predictive vertical brake OVERRIDES slew: once measured climb
+        // rate implies the ceiling is unreachable even at powered-descent
+        // throttle (a = 3.45 m/s^2), pin thrust there immediately. The
+        // stopping distance also covers ESC spin-down lag (first-order tau)
+        // — thrust does not drop the instant the command changes.
+        //
+        // Hysteresis: the pin LATCHES on trigger and only releases when the
+        // vehicle is descending again AND back under 90 % of the ceiling —
+        // otherwise rising vz shrinks the predicted stop distance, the pin
+        // releases mid-climb, and the vehicle chatters past the bound.
+        const BRAKE_A: f64 = 3.45;
+        const ESC_TAU_S: f64 = 0.15;
+        const CEILING_RELEASE_FRAC: f64 = 0.90;
+        const DESCEND_PIN_THROTTLE: f32 = 0.30;
+
+        let v = self.vz_est;
+        let stop_dist = v * v / (2.0 * BRAKE_A) + v * ESC_TAU_S;
+        if self.pose.z + stop_dist >= self.cfg.fence.max_alt_m {
+            self.brake_latched = true;
+        }
+        if self.brake_latched
+            && v <= 0.5
+            && self.pose.z <= self.cfg.fence.max_alt_m * CEILING_RELEASE_FRAC
+        {
+            self.brake_latched = false;
+        }
+        if self.brake_latched && cmd.axes[3] > DESCEND_PIN_THROTTLE {
+            cmd.axes[3] = DESCEND_PIN_THROTTLE;
+        }
+        if self.pose.z + stop_dist >= self.cfg.fence.max_alt_m
+            && cmd.axes[3] > crate::geo::THROTTLE_NEUTRAL
+        {
+            cmd.axes[3] = 0.30;
+        }
 
         // 5) Emergency override — always last, always wins.
         if self.estop_latched {

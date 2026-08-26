@@ -24,7 +24,7 @@ fn report() -> ControllerReport {
 fn ingest(map: &ControllerMap, input: &SpscRing<ControlCommand>, i: u64) {
     let mut cmd = ControlCommand::zeroed(Mode::FullTeleop);
     map.apply(&report(), &mut cmd);
-    cmd.seq = i as u32;
+    cmd.seq = i;
     let _ = input.push(cmd);
 }
 

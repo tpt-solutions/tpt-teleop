@@ -50,8 +50,7 @@ impl CoPilotHub {
 
     fn live(&self, id: usize, now_ns: u64) -> bool {
         !self.released[id].load(Ordering::Acquire)
-            && now_ns.saturating_sub(self.last_seen[id].load(Ordering::Acquire))
-                <= self.timeout_ns
+            && now_ns.saturating_sub(self.last_seen[id].load(Ordering::Acquire)) <= self.timeout_ns
     }
 
     /// The operator currently owning control, if any.
