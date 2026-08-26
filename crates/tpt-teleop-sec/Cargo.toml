@@ -1,0 +1,15 @@
+[package]
+name = "tpt-teleop-sec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Zero-trust security model, RBAC, E2EE via ring AES-GCM / ChaCha20-Poly1305 (tpt-teleop)"
+
+[dependencies]
+tpt-teleop-core = { workspace = true }
+
+[lints]
+workspace = true

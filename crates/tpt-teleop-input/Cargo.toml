@@ -1,0 +1,22 @@
+[package]
+name = "tpt-teleop-input"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Raw HID controller polling, OpenXR hand tracking, haptics (tpt-teleop)"
+
+[dependencies]
+tpt-teleop-core = { workspace = true }
+tpt-teleop-ring = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[lints]
+workspace = true

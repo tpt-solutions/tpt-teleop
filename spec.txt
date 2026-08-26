@@ -31,11 +31,11 @@ Every crate uses the tpt-teleop- prefix.
 Core Workspace Crates
 tpt-teleop-core: The central state machine, autonomy handover logic, and the custom lock-free message bus.
 tpt-teleop-link: Custom UDP multiplexer, io_uring based networking, and WebRTC integration.
-tpt-teleop-input: Universal controller abstraction, polling directly from /dev/input or raw HID reports to bypass OS overhead.
+tpt-teleop-input: Universal controller abstraction, polling directly from /dev/input or raw HID reports to bypass OS overhead. Also accepts AI-driven input sources, which produce ControlCommand streams through the same pipeline as human HID/VR sources.
 tpt-teleop-media: Zero-copy camera ingestion, custom slab-allocated frame buffers, and hardware-accelerated encoding.
 tpt-teleop-safety: Geofencing, latency compensation, and emergency overrides. Runs on a dedicated, highest-priority RT (Real-Time) thread.
 tpt-teleop-hal: Hardware Abstraction Layer. Direct memory-mapped I/O for CAN bus and serial, bypassing heavy OS abstractions.
-tpt-teleop-cloud: A minimal, custom-built HTTP/3 and WebSocket server (built on raw socket2 and quinn) for fleet management, entirely avoiding axum/hyper/tokio.
+tpt-teleop-cloud: A minimal, custom-built HTTP/3 and WebSocket server (built on raw socket2 and quinn) for fleet management, entirely avoiding axum/hyper/tokio. Exposes an MCP supervisory interface for AI-driven fleet dispatch across multiple units.
 tpt-teleop-sec: Zero-trust security, E2EE, and RBAC. Uses ring (ISC/MIT) for cryptography.
 tpt-teleop-analytics: Flight Data Recorder (FDR) writing directly to disk via O_DIRECT to bypass the OS page cache.
 5. The "Everything" Feature Matrix (v1)
@@ -44,6 +44,7 @@ Raw HID Polling: Bypasses gilrs for the absolute lowest latency by reading raw H
 VR/AR Hand Tracking: OpenXR integration for 6DOF control.
 Haptic Feedback Loop: Direct force-feedback routing.
 Shared / Co-Pilot Control: Lock-free state sharing for multiple operators.
+AI Input Source: An AI process is a first-class ControlCommand producer, occupying the same operator role as a human HID/VR source. Selected per-unit, it drives Auto (full autonomy) or Assist (AI-assisted) mode without requiring any change to the existing Mode state machine.
 5.2. Networking & Transport (tpt-teleop-link)
 Custom UDP Multiplexer: We wrote a custom UDP multiplexer from scratch to multiplex control, telemetry, and WebRTC ICE traffic over a single port (UDP 443), bypassing the heavy overhead of standard WebRTC stacks for simple control packets.
 QUIC Fallback: Uses quinn (MIT) for reliable control channels if UDP is blocked.
@@ -57,6 +58,7 @@ AR HUD: Uses wgpu (MIT) in a headless, off-screen rendering context to burn tele
 Deterministic Safety Loop: tpt-teleop-safety runs on an isolated thread with SCHED_FIFO (Linux) or equivalent real-time priority. It intercepts commands in <10 microseconds.
 Predictive Collision Avoidance: Intercepts operator commands and applies kinematic limits.
 Seamless Autonomy Handover: Mathematically smoothed transitions (using cubic splines) between Auto, Assist, and Full Teleop modes.
+Shared Control (Override/Veto Model): When AI and a human operator are both present on a unit, the human remains sole author of intent — the AI never injects new commands. It may only clamp or restrict the human's ControlCommand at the existing safety-loop insertion point (see §6), the same way geofence/kinematic-limit enforcement already works. This keeps a human always accountable for the resulting motion. Continuous blended/weighted control (mixing human and AI intent by ratio) is a possible future extension and is explicitly out of scope for v1.
 5.5. Hardware Abstraction (tpt-teleop-hal)
 Raw SocketCAN: Direct interaction with CAN buses using socketcan (MIT) without heavy middleware.
 MAVLink: Lightweight, custom MAVLink parser written from scratch to avoid the overhead of rust-mavlink's serialization, parsing directly into rkyv structs.
@@ -65,6 +67,7 @@ Mock Hardware: A built-in physics simulator using rapier (MIT side) for testing.
 Custom HTTP/3 Server: Built from scratch using quinn (MIT) and raw socket2. No hyper, no tokio. Handles fleet dashboard API requests with minimal memory footprint.
 WebRTC SFU: Uses webrtc-rs (MIT) but heavily patched to use our custom lock-free ring buffers for media routing, eliminating internal allocations.
 Session Recording: Writes raw rkyv byte streams directly to disk.
+AI & Fleet Dispatch: An MCP (Model Context Protocol) supervisory interface, distinct from the per-tick ControlCommand path — MCP is intent-level (list units, assign a unit a mission, engage autonomy on a unit, take manual control), never the real-time control loop itself, since request/response latency would violate the determinism goals in §3. This is also the layer where multi-unit addressing must be introduced: today's session/ControlCommand model is implicitly single-unit, so a unit identifier and per-unit session routing are required here before an AI dispatcher (or an operator) can address more than one unit.
 5.7. Security & Compliance (tpt-teleop-sec)
 E2EE: Uses ring (ISC/MIT) for AES-256-GCM and ChaCha20-Poly1305.
 Zero-Copy Crypto: Decrypts network packets directly into the tpt-teleop-ring buffer.

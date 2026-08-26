@@ -1,0 +1,157 @@
+# cargo-deny configuration — the "MIT Chain" policy (spec §2)
+#
+# tpt-teleop keeps its dependency tree free of Apache-only patent liabilities:
+#   * Allowed: MIT, BSD-2/3-Clause, ISC, Zlib, MPL-2.0 (and Unicode font/data
+#     licenses for embedded Unicode tables, which are BSD-style permissive).
+#   * Dual MIT OR Apache-2.0 crates are permitted, but cargo resolves and
+#     compiles them strictly under MIT via the [[licenses.clarify]] overrides
+#     below. New dual-licensed transitive deps MUST be added here.
+#   * Strictly Apache-2.0-only crates are banned outright.
+
+[graph]
+all-features = true
+# Check every CI target from one invocation so platform-gated deps
+# (windows-sys, io-uring, libc) are always audited.
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    # BSD-style permissive licenses used solely for embedded Unicode tables
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+]
+deny = [
+    # Bans every crate that is strictly Apache-2.0-only. Dual MIT/Apache
+    # crates are neutralized by the clarify overrides below.
+    "Apache-2.0",
+]
+confidence-threshold = 0.93
+
+# --- Force-MIT resolution for dual MIT OR Apache-2.0 crates -----------------
+# Each entry pins the crate to its MIT branch so the Apache-2.0 grant is
+# never relied upon. Keep alphabetized; extend when new deps appear.
+
+[[licenses.clarify]]
+name = "libc"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "io-uring"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "rkyv"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "rkyv_derive"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "bytecheck"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "bytecheck_derive"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "ptr_meta"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "ptr_meta_derive"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "rend"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "rancor"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "simdnob"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "proc-macro2"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "quote"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "syn"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "unicode-ident"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows-sys"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows-targets"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows-link"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_aarch64_gnullvm"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_aarch64_msvc"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_i686_gnu"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_i686_msvc"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_x86_64_gnu"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_x86_64_gnullvm"
+expression = "MIT"
+
+[[licenses.clarify]]
+name = "windows_x86_64_msvc"
+expression = "MIT"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+version = 2
+yanked = "warn"

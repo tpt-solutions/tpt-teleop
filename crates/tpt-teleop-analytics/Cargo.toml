@@ -1,0 +1,15 @@
+[package]
+name = "tpt-teleop-analytics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Direct-I/O flight data recorder and AI training pipeline export (tpt-teleop)"
+
+[dependencies]
+tpt-teleop-core = { workspace = true }
+
+[lints]
+workspace = true

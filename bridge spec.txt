@@ -1,0 +1,131 @@
+The Core Integration API: tpt-teleop-domain-bridge
+tpt-teleop provides a single, standardized integration crate that all domain repos depend on:
+tpt-teleop-domain-bridge (The Universal Adapter)
+This crate defines the Domain Teleoperation Interface (DTI)—a set of traits and protocols that every domain must implement to integrate with the core teleop system.
+
+// Simplified example of the DTI trait
+pub trait DomainTeleopInterface {
+    /// Called when a human operator takes control
+    fn on_teleop_engage(&mut self, operator_id: Uuid) -> Result<()>;
+    
+    /// Called when control returns to autonomy
+    fn on_teleop_disengage(&mut self) -> Result<()>;
+    
+    /// Receives normalized control commands from the operator
+    /// (e.g., joystick inputs, VR hand positions)
+    fn on_control_command(&mut self, cmd: ControlCommand) -> Result<()>;
+    
+    /// Provides the domain's current state to the teleop system
+    /// (e.g., robot position, battery, fault status)
+    fn get_domain_state(&self) -> DomainState;
+    
+    /// Receives sensor data to stream to the operator
+    /// (e.g., camera frames, LiDAR, haptic feedback)
+    fn get_sensor_feed(&mut self) -> SensorFeed;
+}
+
+
+4. The Universal Integration Architecture
+4.1. The Control Command Protocol
+All domain adapters receive a standardized ControlCommand struct from tpt-teleop:
+
+#[derive(rkyv::Archive)]
+pub struct ControlCommand {
+    pub timestamp_us: u64,           // Microsecond timestamp
+    pub operator_id: Uuid,           // Who is controlling
+    pub primary_input: InputState,   // Joystick, VR hands, steering wheel
+    pub secondary_input: InputState, // Implement control, camera gimbal
+    pub buttons: ButtonState,        // E-stop, mode switch, etc.
+    pub haptic_feedback: HapticCmd,  // Force feedback commands
+}
+
+// Design intent: operator_id is deliberately generic enough to identify
+// either a human operator or an AI controller — full autonomy and
+// AI-assist need no structural change to this struct, only a session
+// where operator_id resolves to an AI agent instead of a human. Note
+// this struct is aspirational/future-facing: the ControlCommand actually
+// implemented today (crates/tpt-teleop-core/src/ser/cmd.rs) is a flat
+// 56-byte POD type with no operator_id/InputState/ButtonState fields —
+// that discrepancy is intentional and not yet reconciled.
+
+#[derive(rkyv::Archive)]
+pub struct InputState {
+    pub axes: [f32; 8],              // Normalized -1.0 to 1.0
+    pub pose: Option<Pose6DOF>,      // For VR/AR control
+    pub force_feedback: [f32; 6],    // For haptic devices
+}
+
+Shared Control at the DTI Layer: a session maps to a single operator_id per on_control_command call, so true shared control (human and AI both live on the same unit at once) does not add a second operator_id to this struct. Instead, arbitration happens upstream, in tpt-teleop-core/tpt-teleop-safety, before the call reaches the domain adapter — consistent with the override/veto model in spec.txt §5.4: the human is the operator_id of record, and AI-driven restrictions are folded into the single ControlCommand the domain adapter receives. The domain adapter is never handed two competing streams to reconcile itself. Continuous blended (weighted) control is not addressed by this model and is deferred.
+
+4.2. The Sensor Feed Protocol
+All domain adapters provide a standardized SensorFeed struct to tpt-teleop:
+
+#[derive(rkyv::Archive)]
+pub struct SensorFeed {
+    pub timestamp_us: u64,
+    pub video_frames: Vec<VideoFrame>,      // RGB, thermal, depth
+    pub point_clouds: Vec<PointCloud>,      // LiDAR, radar
+    pub telemetry: DomainTelemetry,         // Battery, position, status
+    pub haptic_data: HapticFeedback,        // Force/torque for haptic devices
+    pub audio: Option<AudioStream>,         // Microphone data
+}
+
+4.3. The Safety State Machine
+tpt-teleop provides a universal safety state machine that all domains integrate with:
+
+AUTONOMOUS → REQUESTING_TELEOP → TELEOP_ACTIVE → RETURNING_TO_AUTONOMY → AUTONOMOUS
+                ↓
+          EMERGENCY_STOP
+
+Each domain adapter implements the state transition logic:
+REQUESTING_TELEOP: The domain detects a fault and requests human assistance.
+TELEOP_ACTIVE: The human is in control. The domain enforces safety limits (e.g., speed limits, geofences).
+RETURNING_TO_AUTONOMY: The human releases control. The domain smoothly transitions back to autonomy.
+EMERGENCY_STOP: The human or the domain triggers an immediate stop.
+5. The Data Flow: End-to-End
+Here's the complete data flow for a teleoperation session:
+
+1. Operator Input (Joystick/VR/Steering Wheel)
+   ↓
+2. tpt-teleop-input (Normalizes input to ControlCommand)
+   ↓
+3. tpt-teleop-core (Applies safety limits, routes command)
+   ↓
+4. tpt-teleop-link (Encrypts and transmits via WebRTC/QUIC/UDP)
+   ↓
+5. Domain Adapter (e.g., tpt-t-agri-teleop)
+   ↓
+6. Domain-Specific Translation (e.g., ISOBUS CAN commands)
+   ↓
+7. Robot Actuators (Motors, hydraulics, thrusters)
+   ↓
+8. Robot Sensors (Cameras, LiDAR, force/torque)
+   ↓
+9. Domain Adapter (Packages sensor data into SensorFeed)
+   ↓
+10. tpt-teleop-link (Receives and decrypts sensor data)
+   ↓
+11. tpt-teleop-media (Renders AR overlays, encodes video)
+   ↓
+12. Operator Display (Video feed, telemetry, haptic feedback)
+
+
+Key Integration Points
+Control Command Translation: The domain repo receives normalized ControlCommand structs (joystick axes, button presses, VR poses) and translates them into domain-specific actuator commands (hydraulic valve positions, motor torques, thruster outputs).
+Sensor Feed Provision: The domain repo provides camera frames, LiDAR point clouds, haptic force data, and telemetry to tpt-teleop, which handles encoding, streaming, and AR overlay rendering.
+Safety State Machine Integration: The domain repo implements the on_teleop_engage / on_teleop_disengage hooks to smoothly transition between autonomy and teleop modes, ensuring the robot doesn't jerk or behave unpredictably during handover.
+Fault Detection & Handover Trigger: The domain repo monitors its own health (motor temps, sensor failures, geofence violations) and triggers a teleop handover by calling tpt-teleop's request_teleop_assistance() API when autonomy can no longer safely continue. 
+
+6. Summary: The tpt Ecosystem Integration Model
+tpt-teleop is the universal human-machine interface. It provides:
+Low-latency video/audio streaming
+Normalized control input abstraction
+Safety state machine for autonomy ↔ teleop handover
+Network transport abstraction (WebRTC, QUIC, DTN)
+Each domain repo (tpt-t-agri, tpt-teleop-marine, etc.) provides:
+Domain-specific kinematics and physics
+Domain-specific safety rules and constraints
+A domain adapter crate that bridges to tpt-teleop-domain-bridge
+The integration is clean, modular, and domain-agnostic. tpt-teleop doesn't need to know what a tractor or a surgical robot is—it only needs to know how to stream video and accept control inputs. The domain repos handle the "what," and tpt-teleop handles the "how."
+Not yet part of this model, but anticipated as future extensions: multi-unit fleets, where one AI or human dispatcher manages several concurrent DTI sessions (one operator_id/session per unit today, with no fleet-level orchestration above that), and an MCP-based supervisory interface for driving that orchestration (see spec.txt §5.6, "AI & Fleet Dispatch").
+This architecture allows the tpt ecosystem to scale across every robotics domain, from warehouses to deep space, while maintaining a single, unified teleoperation experience for human operators.

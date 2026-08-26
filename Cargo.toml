@@ -1,0 +1,54 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-teleop"
+homepage = "https://tpt.solutions/tpt-teleop"
+documentation = "https://docs.rs/tpt-teleop-core"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
+[workspace.dependencies]
+# Internal crates
+tpt-teleop-core = { path = "crates/tpt-teleop-core" }
+tpt-teleop-ring = { path = "crates/tpt-teleop-ring" }
+tpt-teleop-hal = { path = "crates/tpt-teleop-hal" }
+tpt-teleop-safety = { path = "crates/tpt-teleop-safety" }
+tpt-teleop-input = { path = "crates/tpt-teleop-input" }
+tpt-teleop-media = { path = "crates/tpt-teleop-media" }
+tpt-teleop-link = { path = "crates/tpt-teleop-link" }
+tpt-teleop-cloud = { path = "crates/tpt-teleop-cloud" }
+tpt-teleop-sec = { path = "crates/tpt-teleop-sec" }
+tpt-teleop-analytics = { path = "crates/tpt-teleop-analytics" }
+
+# Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
+# Members gate these behind [target.'cfg(...)'.dependencies] as needed;
+# deny.toml audits them on every CI target regardless of host OS.
+libc = "0.2"
+io-uring = "0.7"
+rkyv = { version = "0.8", features = ["bytecheck"] }
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+debug = true
+
+[profile.bench]
+inherits = "release"

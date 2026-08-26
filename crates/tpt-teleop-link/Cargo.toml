@@ -1,0 +1,24 @@
+[package]
+name = "tpt-teleop-link"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Custom UDP multiplexer, io_uring networking, QUIC fallback, mesh discovery (tpt-teleop)"
+
+[dependencies]
+tpt-teleop-core = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }
+
+[lints]
+workspace = true
