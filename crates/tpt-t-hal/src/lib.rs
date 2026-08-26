@@ -9,21 +9,38 @@
 
 pub mod camera;
 pub mod can;
+pub mod mavlink;
+pub mod mmio;
 pub mod mock;
 pub mod motor;
 pub mod sensor;
 pub mod sim;
+pub mod stub_can;
 pub mod types;
+
+#[cfg(target_os = "linux")]
+pub mod socketcan;
 
 pub use camera::Camera;
 pub use can::{CanBus, ids};
+pub use mavlink::{
+    Attitude, Heartbeat, MavError, MavFrame, MavParser, decode_attitude, decode_heartbeat,
+    mav_crc16, parse_frame,
+};
 pub use mock::can_pair;
 pub use motor::Motor;
 pub use sensor::{GpsSource, ImuSource, TelemetrySource};
 pub use sim::{QuadDrone, World};
+pub use stub_can::StubCan;
 pub use types::{
     CanFrame, FrameInfo, HalError, MotorCommand, MotorMode, MotorTelemetry, PixelFormat, Pose6D,
 };
+
+#[cfg(target_os = "linux")]
+pub use socketcan::SocketCan;
+#[cfg(target_os = "linux")]
+pub use mmio::LinuxMmio;
+pub use mmio::{BufferMmio, Mmio};
 
 /// Crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

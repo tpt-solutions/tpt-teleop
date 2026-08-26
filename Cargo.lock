@@ -331,6 +331,8 @@ dependencies = [
 name = "tpt-t-hal"
 version = "0.1.0"
 dependencies = [
+ "libc",
+ "rkyv",
  "tpt-t-core",
  "tpt-t-ring",
 ]
@@ -364,6 +366,7 @@ name = "tpt-t-media"
 version = "0.1.0"
 dependencies = [
  "tpt-t-core",
+ "tpt-t-link",
 ]
 
 [[package]]

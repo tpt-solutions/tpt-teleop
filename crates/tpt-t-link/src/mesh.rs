@@ -14,7 +14,7 @@
 
 use std::net::SocketAddr;
 
-use tpt_t_ring::cast::{bytes_of, ref_from_bytes};
+use tpt_t_ring::cast::bytes_of;
 
 /// Beacon magic `"MSH\x01"` (mesh protocol revision 1).
 pub const MESH_MAGIC: u32 = 0x4D53_4801;
@@ -255,7 +255,7 @@ mod tests {
         // Decode from the aligned stack copy...
         assert_eq!(MeshBeacon::decode(&buf[..n]), Some(b));
         // ...and from a deliberately unaligned offset inside a datagram.
-        let mut datagram = [0u8; MAX_DATAGRAM];
+        let mut datagram = [0u8; 128];
         datagram[1..1 + n].copy_from_slice(&buf[..n]);
         assert_eq!(MeshBeacon::decode(&datagram[1..1 + n]), Some(b));
 
@@ -311,7 +311,7 @@ mod tests {
         assert!(t.observe(1, addr(1), 0, 3));
         assert!(t.observe(1, addr(1), 1, 4));
         // A jump far backwards (old seq) does not.
-        assert!(!t.observe(1, addr(1), (u32::MAX - 2) as u32, 5));
+        assert!(!t.observe(1, addr(1), u32::MAX - 2, 5));
         assert_eq!(t.find(1).unwrap().last_seq, 1);
     }
 
@@ -340,5 +340,3 @@ mod tests {
         assert_eq!(t.find(2).unwrap().addr.port(), 2);
     }
 }
-
-

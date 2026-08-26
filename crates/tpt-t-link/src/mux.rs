@@ -5,10 +5,10 @@
 //! receive):
 //!
 //! ```text
-//! ┌──────────────────────────────┬──────┬─────────┬──────────┐
-//! │ WireFrame (magic/ver/len) 8B │ chan │ flags   │ rsvd u16 │
-//! └──────────────────────────────┴──────┴─────────┴──────────┘
-//! ├──────── HEADER_LEN = 12 ────┤
+//! ┌────────────────────────────────────────────────────────────┐
+//! │ WireFrame 8B │ chan │ flags │ rsvd u16 │ route u32 (rsvd) │
+//! └────────────────────────────────────────────────────────────┘
+//! ├─────────────── HEADER_LEN = 16 ────────────────────────────┤
 //! ┌──────────────────────────────────────────────────────────┐
 //! │ payload (`payload_len` bytes, rkyv-encoded for our types)│
 //! └──────────────────────────────────────────────────────────┘
@@ -30,8 +30,8 @@ use std::io;
 use std::net::{SocketAddr, UdpSocket};
 
 use tpt_t_core::ser::{
-    access_root, serialize_into, AlignedBuf, ControlCommand, TelemetryPacket, WireFrame,
-    FRAME_MAGIC, PROTOCOL_VERSION,
+    AlignedBuf, ControlCommand, FRAME_MAGIC, PROTOCOL_VERSION, TelemetryPacket, WireFrame,
+    access_root, serialize_into,
 };
 use tpt_t_ring::cast::{bytes_of, ref_from_bytes};
 
@@ -47,7 +47,12 @@ pub const DEFAULT_PORT: u16 = 443;
 pub const MAX_DATAGRAM: usize = 1500;
 
 /// Framing overhead before payload.
-pub const HEADER_LEN: usize = 12;
+///
+/// 16 bytes so the payload begins 8-byte-aligned inside any reasonably
+/// aligned receive buffer — required for zero-copy `rkyv::access` views of
+/// structs containing `u64`/`f64` fields. Bytes 12..16 are a reserved
+/// routing word (unit/session addressing lands with spec §5.6).
+pub const HEADER_LEN: usize = 16;
 
 /// CRC32 trailer length.
 pub const TRAILER_LEN: usize = 4;
@@ -121,7 +126,8 @@ pub struct LinkStats {
 }
 
 impl LinkStats {
-    fn bump(cell: &core::sync::atomic::AtomicU64) {
+    /// Increments one counter (relaxed order — counters are advisory).
+    pub fn bump(cell: &core::sync::atomic::AtomicU64) {
         let _ = cell.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -180,7 +186,9 @@ impl fmt::Debug for Inbound<'_> {
                 .field("from", from)
                 .field("reliable", reliable)
                 .finish(),
-            Inbound::Telemetry { from, .. } => f.debug_struct("Telemetry").field("from", from).finish(),
+            Inbound::Telemetry { from, .. } => {
+                f.debug_struct("Telemetry").field("from", from).finish()
+            }
             Inbound::Ice { payload, from } => f
                 .debug_struct("Ice")
                 .field("len", &payload.len())
@@ -216,6 +224,54 @@ impl fmt::Debug for UdpMux {
         f.debug_struct("UdpMux")
             .field("local_addr", &self.socket.local_addr().ok())
             .finish()
+    }
+}
+
+/// 16-byte-aligned receive buffer.
+///
+/// rkyv's zero-copy [`access_root`](tpt_t_core::ser::access_root) validation
+/// requires the archived bytes to sit at the type's alignment, and a payload
+/// lands at offset 12 inside a plain `[u8; MAX_DATAGRAM]` — unaligned by
+/// definition. Allocating receives through this wrapper makes every archived
+/// view soundly readable regardless of what the payload offset does.
+#[repr(C, align(16))]
+pub struct RxBuffer {
+    buf: [u8; MAX_DATAGRAM],
+}
+
+impl RxBuffer {
+    /// Zero-initialized buffer.
+    pub fn new() -> Self {
+        Self {
+            buf: [0u8; MAX_DATAGRAM],
+        }
+    }
+}
+
+impl Default for RxBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl core::fmt::Debug for RxBuffer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("RxBuffer(..)")
+    }
+}
+
+impl core::ops::Deref for RxBuffer {
+    type Target = [u8];
+    #[inline]
+    fn deref(&self) -> &[u8] {
+        &self.buf
+    }
+}
+
+impl core::ops::DerefMut for RxBuffer {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut [u8] {
+        &mut self.buf
     }
 }
 
@@ -273,7 +329,8 @@ impl UdpMux {
 
     // -- framing ----------------------------------------------------------
 
-    /// Writes the 12-byte header into `out[0..HEADER_LEN]`.
+    /// Writes the 16-byte header into `out[0..HEADER_LEN]`. Bytes 12..16
+    /// are the reserved routing word (zero until §5.6 session addressing).
     fn write_header(out: &mut [u8], channel: Channel, frame_flags: u8, payload_len: u16) {
         let hdr = WireFrame {
             magic: FRAME_MAGIC,
@@ -283,7 +340,7 @@ impl UdpMux {
         out[..8].copy_from_slice(bytes_of(&hdr));
         out[8] = channel.as_u8();
         out[9] = frame_flags;
-        out[10..12].fill(0);
+        out[10..HEADER_LEN].fill(0);
     }
 
     /// Appends the CRC32 trailer over `out[..end]` and returns total length.
@@ -392,8 +449,7 @@ impl UdpMux {
                 Ok(n)
             }
             Err(e)
-                if e.kind() == io::ErrorKind::WouldBlock
-                    || e.kind() == io::ErrorKind::TimedOut =>
+                if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut =>
             {
                 LinkStats::bump(&self.stats.tx_errors);
                 self.backpressure.note_send_blocked(now_ns);
@@ -443,21 +499,26 @@ impl UdpMux {
     /// which keeps this method free of internal borrow-carried state.
     pub fn recv_frame<'a>(
         &mut self,
-        scratch: &'a mut [u8; MAX_DATAGRAM],
+        scratch: &'a mut RxBuffer,
     ) -> io::Result<Option<Result<Inbound<'a>, FrameError>>> {
         let Some((n, from)) = self.fill(scratch)? else {
             return Ok(None);
         };
-        Ok(Some(Self::demux(scratch, n, from)))
+        let step = Self::demux(scratch, n, from);
+        if step.is_ok() {
+            LinkStats::bump(&self.stats.rx_frames);
+        }
+        Ok(Some(step))
     }
 
     /// One raw receive into `scratch`; `None` on would-block. Keeps the
     /// socket borrow out of the parse path so frame references can alias the
     /// scratch buffer across the demux match.
-    fn fill(
-        &mut self,
-        scratch: &mut [u8; MAX_DATAGRAM],
-    ) -> io::Result<Option<(usize, SocketAddr)>> {
+    // The retry loop only iterates on Windows (WSAECONNRESET noise); on
+    // other platforms every branch returns, which clippy flags as a
+    // never-loop — that is exactly the intent.
+    #[allow(clippy::never_loop)]
+    fn fill(&mut self, scratch: &mut RxBuffer) -> io::Result<Option<(usize, SocketAddr)>> {
         loop {
             match self.socket.recv_from(scratch) {
                 Ok(v) => return Ok(Some(v)),
@@ -486,11 +547,7 @@ impl UdpMux {
     /// Pure frame parser: validates header, trailer CRC, and channel payload;
     /// returns borrowed views into `buf`. No I/O, no counters — callers own
     /// the accounting.
-    fn demux<'a>(
-        buf: &'a [u8; MAX_DATAGRAM],
-        n: usize,
-        from: SocketAddr,
-    ) -> Result<Inbound<'a>, FrameError> {
+    fn demux<'a>(buf: &'a RxBuffer, n: usize, from: SocketAddr) -> Result<Inbound<'a>, FrameError> {
         if n < HEADER_LEN + TRAILER_LEN {
             return Err(FrameError::Malformed);
         }
@@ -553,7 +610,9 @@ impl UdpMux {
     /// stack copy) so hop-integrity CRCs can be recomputed identically to
     /// the sender. Archived integers are little-endian wrappers (`u32_le`),
     /// hence the `Into` conversions.
-    fn command_from_archived(arch: &<ControlCommand as rkyv::Archive>::Archived) -> ControlCommand {
+    pub fn command_from_archived(
+        arch: &<ControlCommand as rkyv::Archive>::Archived,
+    ) -> ControlCommand {
         ControlCommand {
             magic: arch.magic.into(),
             version: arch.version.into(),
@@ -602,14 +661,16 @@ mod tests {
     }
 
     /// Drains until a valid frame arrives; converts it to owned data.
-    fn next_ev(mux: &mut UdpMux, rx: &mut [u8; MAX_DATAGRAM]) -> Ev {
+    fn next_ev(mux: &mut UdpMux, rx: &mut RxBuffer) -> Ev {
         loop {
             match mux.recv_frame(rx).unwrap() {
                 Some(Ok(inb)) => {
                     return match inb {
-                        Inbound::Control { cmd, from, reliable } => {
-                            Ev::Control(UdpMux::command_from_archived(cmd), from, reliable)
-                        }
+                        Inbound::Control {
+                            cmd,
+                            from,
+                            reliable,
+                        } => Ev::Control(UdpMux::command_from_archived(cmd), from, reliable),
                         Inbound::Telemetry { pkt, from } => Ev::Telemetry(
                             TelemetryPacket {
                                 magic: pkt.magic.into(),
@@ -633,6 +694,28 @@ mod tests {
     }
 
     #[test]
+    fn demux_direct_parse_is_alignment_safe() {
+        use tpt_t_core::ser::{PROTOCOL_VERSION as PV, access_root};
+        let mut a = UdpMux::bind_loopback().unwrap();
+        let mut buf = [0u8; MAX_DATAGRAM];
+        let n = a.write_control_frame(&sample_cmd(7), 0, &mut buf).unwrap();
+        let hdr: &tpt_t_core::ser::WireFrame = ref_from_bytes(&buf[..8]).unwrap();
+        assert_eq!(hdr.magic, tpt_t_core::ser::FRAME_MAGIC);
+        assert_eq!(hdr.version, PV);
+        let plen = hdr.payload_len as usize;
+
+        // Properly aligned receive path.
+        let mut rxbuf = RxBuffer::new();
+        rxbuf[..n].copy_from_slice(&buf[..n]);
+        match access_root::<ControlCommand>(&rxbuf[HEADER_LEN..HEADER_LEN + plen]) {
+            Ok(_) => eprintln!("probe: access ok"),
+            Err(e) => panic!("probe: access failed: {e}"),
+        }
+        let step = UdpMux::demux(&rxbuf, n, "127.0.0.1:1".parse().unwrap());
+        assert!(step.is_ok(), "demux failed: {:?}", step.err());
+    }
+
+    #[test]
     fn control_frame_roundtrips_over_real_udp() {
         let mut a = UdpMux::bind_loopback().unwrap();
         let mut b = UdpMux::bind_loopback().unwrap();
@@ -645,7 +728,7 @@ mod tests {
         assert!(n > HEADER_LEN + TRAILER_LEN);
         a.send_framed(dst, &buf[..n], 0).unwrap();
 
-        let mut rx = [0u8; MAX_DATAGRAM];
+        let mut rx = RxBuffer::new();
         match next_ev(&mut b, &mut rx) {
             Ev::Control(cmd, from, reliable) => {
                 assert_eq!(cmd.seq, 7);
@@ -687,7 +770,7 @@ mod tests {
         // 4) Good frame last — must still arrive through the garbage.
         a.send_framed(dst, &buf[..n], 0).unwrap();
 
-        let mut rx = [0u8; MAX_DATAGRAM];
+        let mut rx = RxBuffer::new();
         // First three receives surface classified errors...
         let mut got = Vec::new();
         for _ in 0..50 {
@@ -709,7 +792,11 @@ mod tests {
         }
         assert_eq!(
             got,
-            vec![FrameError::Crc, FrameError::Malformed, FrameError::Malformed],
+            vec![
+                FrameError::Crc,
+                FrameError::Malformed,
+                FrameError::Malformed
+            ],
             "crc reject counted, then magic and length rejects"
         );
     }
@@ -730,7 +817,9 @@ mod tests {
         a.send_framed(dst, &buf[..n], 0).unwrap();
 
         // ICE passthrough
-        let n = a.write_ice_frame(&[0x16, 0xFE, 0xFD, 0xAA], &mut buf).unwrap();
+        let n = a
+            .write_ice_frame(&[0x16, 0xFE, 0xFD, 0xAA], &mut buf)
+            .unwrap();
         a.send_framed(dst, &buf[..n], 0).unwrap();
 
         // Mesh
@@ -747,7 +836,7 @@ mod tests {
         let n = a.write_ack_frame(&ack, &mut buf).unwrap();
         a.send_framed(dst, &buf[..n], 0).unwrap();
 
-        let mut rx = [0u8; MAX_DATAGRAM];
+        let mut rx = RxBuffer::new();
         let mut kinds = Vec::new();
         for _ in 0..4 {
             match next_ev(&mut b, &mut rx) {
@@ -783,8 +872,3 @@ mod tests {
         assert!(a.write_ice_frame(&big, &mut buf).is_err());
     }
 }
-
-
-
-
-

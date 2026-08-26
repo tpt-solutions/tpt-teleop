@@ -9,9 +9,11 @@
 //! * [`service`] — drives [`mux::UdpMux`] from the Phase 2 platform event
 //!   loop (epoll / kqueue / IOCP), one pinned network thread, no async
 //!   runtime anywhere.
-//! * [`uring`] *(Linux)* — genuine io_uring transmit path; datagrams are
-//!   encoded directly into submission-owned slots so the kernel reads what
-//!   the serializer wrote.
+//! * [`uring`] *(Linux)* — genuine io_uring transmit path wired into
+//!   [`service::NetService`]; datagrams are encoded directly into
+//!   submission-owned slots so the kernel reads what the serializer wrote,
+//!   with graceful fallback to the portable socket send when io_uring is
+//!   unavailable.
 //! * [`reliable`] — selective-repeat ARQ giving the control channel ordered,
 //!   loss-recovering delivery when raw UDP is not enough. This is the QUIC
 //!   fallback slot: quinn itself cannot ship under the §2 MIT chain (its
@@ -28,10 +30,10 @@ pub mod backpressure;
 pub mod crc;
 pub mod mesh;
 pub mod mux;
-#[cfg(target_os = "linux")]
-pub mod uring;
 pub mod reliable;
 pub mod service;
+#[cfg(target_os = "linux")]
+pub mod uring;
 
 /// Crate version (from Cargo metadata).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

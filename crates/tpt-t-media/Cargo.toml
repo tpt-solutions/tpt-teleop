@@ -10,6 +10,7 @@ description = "Zero-copy camera ingestion, slab frame pools, hardware-accelerate
 
 [dependencies]
 tpt-t-core = { workspace = true }
+tpt-t-link = { workspace = true }
 
 [lints]
 workspace = true

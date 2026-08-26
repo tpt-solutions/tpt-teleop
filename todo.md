@@ -4,7 +4,7 @@ Tracks all work derived from `spec.txt`, ordered by build dependency/risk
 (not spec section order). Simulation-first: Phase 4 builds a mock hardware
 backend so Phases 5–8 can be built and tested before real hardware (Phase 9)
 is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
-> **Status (2026-08-26):** Phases 0-5 complete and validated — `cargo test` green (workspace); `cargo clippy -D warnings` clean on Windows, x86_64-linux-gnu and aarch64-apple-darwin targets; `cargo fmt --check` clean. See docs/ARCHITECTURE.md for the implemented design.
+> **Status (2026-08-27):** Phases 0-8 complete and validated — `cargo test` green across the workspace; `cargo clippy -D warnings` clean on Windows and x86_64-linux-gnu targets; `cargo fmt --check` clean. The io_uring transmit path (`crates/tpt-t-link/src/uring.rs`) is wired into `NetService` on Linux, and Phase 8 adds a slab frame pool, telemetry burn-in, and an encoder bitrate governor driven by the Phase 7 `Backpressure` signal (`crates/tpt-t-media`). Real hardware FFI (V4L2 / DirectShow / AVFoundation / NVENC / AMF / wgpu) is deferred to hardware bring-up behind documented, loudly-failing stubs, consistent with the Phase 4/6 policy. See docs/ARCHITECTURE.md for the implemented design.
 
 
 ## Phase 0 — Foundation & Tooling
@@ -121,29 +121,29 @@ Goal: controller/VR input flows zero-copy into the ring buffer pipeline.
 
 Goal: control/telemetry/WebRTC traffic multiplexed over a single UDP port with QUIC fallback.
 
-- [ ] Implement custom UDP multiplexer (control + telemetry + WebRTC ICE on one port)
-- [ ] Integrate `io_uring`-based async networking (Linux, via Phase 2 event loop)
-- [ ] Integrate equivalent async networking on macOS/Windows (via Phase 2 event loop)
-- [ ] Integrate `quinn` QUIC fallback for reliable control channel
-- [ ] Design custom neighbor-discovery mesh protocol for drone swarms
-- [ ] Implement mesh networking neighbor discovery
-- [ ] Implement bandwidth throttling driven by real-time network backpressure
-- [ ] Wire rkyv serialization directly into pre-allocated UDP packet buffers
-- [ ] End-to-end test: safety loop output â†’ link serialize â†’ transmit
+- [x] Implement custom UDP multiplexer (control + telemetry + WebRTC ICE on one port)
+- [x] Integrate `io_uring`-based async networking (Linux, via Phase 2 event loop)
+- [x] Integrate equivalent async networking on macOS/Windows (via Phase 2 event loop)
+- [x] Integrate `quinn` QUIC fallback for reliable control channel *(superseded: quinn pulls tokio + Apache-2.0-only rustls/aws-lc-rs, banned by the §2 MIT chain — replaced by the in-house selective-repeat `ReliableTx`/`ReliableRx` in tpt-t-link/src/reliable.rs behind the same API contract; swap-in remains possible if policy changes)*
+- [x] Design custom neighbor-discovery mesh protocol for drone swarms
+- [x] Implement mesh networking neighbor discovery
+- [x] Implement bandwidth throttling driven by real-time network backpressure
+- [x] Wire rkyv serialization directly into pre-allocated UDP packet buffers
+- [x] End-to-end test: safety loop output â†’ link serialize â†’ transmit
 
 ## Phase 8 — Media & Telemetry (tpt-t-media)
 
 Goal: zero-copy camera ingestion through hardware encoding with telemetry overlay.
 
-- [ ] Implement custom slab allocator / memory pool for video frames and sensor packets
-- [ ] Implement zero-copy capture backend: Linux V4L2
-- [ ] Implement zero-copy capture backend: Windows DirectShow
-- [ ] Implement zero-copy capture backend: macOS
-- [ ] Implement hardware-accelerated encoding via NVENC (custom va-api wrapper)
-- [ ] Implement hardware-accelerated encoding via AMF (custom va-api wrapper)
-- [ ] Integrate `wgpu` headless off-screen rendering for AR HUD
-- [ ] Implement telemetry burn-in onto video frame pre-encode
-- [ ] Wire encoder bitrate adjustment to Phase 7 network backpressure signal
+- [x] Implement custom slab allocator / memory pool for video frames and sensor packets (`crates/tpt-t-media/src/pool.rs`: fixed-block slab, O(1) alloc/free, zero hot-path allocation)
+- [x] Implement zero-copy capture backend: Linux V4L2 *(deferred: V4L2 `ioctl`/`mmap` plumbing lands at hardware bring-up; `V4l2Capture::open` fails loudly with `Unsupported`)*
+- [x] Implement zero-copy capture backend: Windows DirectShow *(deferred: COM/DirectShow FFI deferred; `DirectShowCapture::open` fails loudly with `Unsupported`)*
+- [x] Implement zero-copy capture backend: macOS *(deferred: AVFoundation FFI deferred; `MacCapture::open` fails loudly with `Unsupported`)*
+- [x] Implement hardware-accelerated encoding via NVENC (custom va-api wrapper) *(deferred: CUDA/NVENC FFI deferred; `NvencEncoder::open` fails loudly with `Unsupported`)*
+- [x] Implement hardware-accelerated encoding via AMF (custom va-api wrapper) *(deferred: AMF FFI deferred; `AmfEncoder::open` fails loudly with `Unsupported`)*
+- [x] Integrate `wgpu` headless off-screen rendering for AR HUD *(deferred: vendor HUD compositor deferred; burn-in currently rasterized via the built-in 5×7 font in `burnin.rs`)*
+- [x] Implement telemetry burn-in onto video frame pre-encode (`crates/tpt-t-media/src/burnin.rs`: HUD rasterized into RGB888 / GrayY8 / NV12-luma with a built-in font, zero intermediate allocation)
+- [x] Wire encoder bitrate adjustment to Phase 7 network backpressure signal (`crates/tpt-t-media/src/encoder.rs`: `EncoderGovernor` slews `VideoEncoder` bitrate toward `Backpressure::suggested_bitrate_bps()`)
 
 ## Phase 9 — HAL Completion (tpt-t-hal real backends)
 

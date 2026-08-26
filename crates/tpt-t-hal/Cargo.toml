@@ -11,6 +11,10 @@ description = "Hardware abstraction layer: motors, sensors, CAN bus, cameras; mo
 [dependencies]
 tpt-t-core = { workspace = true }
 tpt-t-ring = { workspace = true }
+rkyv = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
 
 [lints]
 workspace = true

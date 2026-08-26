@@ -8,17 +8,20 @@ use crate::report::{ControllerReport, DeviceInfo};
 use crate::source::{InputError, RawInputSource};
 
 /// Kernel uapi request builder (`_IOR('E', nr, size)`), asm-generic/ioctl.h.
-const fn ev_ior(nr: u32, size: usize) -> usize {
-    (2u32 << 30) as usize | (size & 0x3FFF) << 16 | (b'E' as usize) << 8 | nr as usize
+///
+/// `libc::ioctl`'s request parameter is `u64` on modern linux-gnu targets
+/// (it mirrors the kernel's `unsigned long`), so requests are built in u64.
+const fn ev_ior(nr: u32, size: usize) -> u64 {
+    (2u32 << 30) as u64 | ((size & 0x3FFF) as u64) << 16 | (b'E' as u64) << 8 | nr as u64
 }
 
 /// `EVIOCGID` — device id probe.
-fn eviocg_id() -> usize {
+fn eviocg_id() -> u64 {
     ev_ior(0x02, std::mem::size_of::<[u16; 4]>())
 }
 
 /// `EVIOCGABS(axis)` — absolute-axis calibration probe.
-fn eviocg_abs(code: u32) -> usize {
+fn eviocg_abs(code: u32) -> u64 {
     ev_ior(0x40 + code, std::mem::size_of::<InputAbsInfo>())
 }
 
@@ -58,6 +61,7 @@ const CAL_CODES: [u16; 8] = [
 ];
 
 /// An opened evdev device node.
+#[derive(Debug)]
 pub struct EvdevSource {
     fd: i32,
     info: DeviceInfo,
@@ -93,6 +97,8 @@ impl EvdevSource {
         };
 
         let mut acc = EvdevAccumulator::default();
+        // SAFETY: fixed-size EVIOCGABS ioctls into a stack InputAbsInfo on
+        // our own read-only fd; failure leaves the default calibration.
         unsafe {
             for (slot_i, &code) in CAL_CODES.iter().enumerate() {
                 let mut ai = InputAbsInfo::default();

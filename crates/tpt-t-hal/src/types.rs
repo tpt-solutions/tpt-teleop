@@ -217,6 +217,8 @@ unsafe impl PlainBytes for Pose6D {}
 /// HAL-level failures shared across device kinds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HalError {
+    /// Operation needs a hardware backend that is not bound yet.
+    Unsupported(&'static str),
     /// Device rejected the operation (busy/offline); vendor text attached.
     Device(&'static str),
     /// Caller-provided buffer too small.
@@ -230,6 +232,7 @@ pub enum HalError {
 impl core::fmt::Display for HalError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            HalError::Unsupported(s) => write!(f, "unsupported: {s}"),
             HalError::Device(s) => write!(f, "device error: {s}"),
             HalError::BufferTooSmall { needed, got } => {
                 write!(f, "buffer too small: need {needed}, got {got}")

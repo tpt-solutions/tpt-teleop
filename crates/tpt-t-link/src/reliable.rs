@@ -93,7 +93,7 @@ impl Default for ReliableConfig {
     fn default() -> Self {
         Self {
             window: 128,
-            rto_ns: 10_000_000,      // 10 ms — control-loop friendly
+            rto_ns: 10_000_000, // 10 ms — control-loop friendly
             max_resends: 200,
         }
     }
@@ -268,11 +268,16 @@ struct RxSlot {
     bytes: [u8; MAX_RELIABLE_PAYLOAD],
 }
 
-/// Selective-repeat receiver with a fixed reorder buffer
-/// ([`SACK_BITS`] slots ahead of the expected sequence).
+/// Selective-repeat receiver with a fixed 32-frame reorder window.
+///
+/// Bitmap invariant: bit `i` set ⇒ slot `i` holds the frame at sequence
+/// `next + i`. Bit 0 is therefore the *ready* bit — the frame exactly at
+/// `next`. [`drain`](Self::drain) pops the ready chain (shifting slots down
+/// as it goes); [`build_ack`](Self::build_ack) reports `map >> 1` because
+/// everything below `next` is already cumulative-acked.
 pub struct ReliableRx {
     next: u32,
-    ahead: u32, // bit i ⇒ seq = next + 1 + i is buffered
+    map: u32,
     slots: Box<[RxSlot]>,
 }
 
@@ -287,7 +292,7 @@ impl ReliableRx {
     pub fn new() -> Self {
         Self {
             next: 0,
-            ahead: 0,
+            map: 0,
             slots: (0..SACK_BITS)
                 .map(|_| RxSlot {
                     len: 0,
@@ -303,54 +308,62 @@ impl ReliableRx {
         self.next
     }
 
-    /// Sequences currently held out-of-order.
+    /// Sequences held ahead of the expected one (excludes any ready frame).
+    #[inline]
     pub fn buffered_count(&self) -> u32 {
-        self.ahead.count_ones()
+        (self.map >> 1).count_ones()
     }
 
-    /// Offers one frame. Out-of-order frames are copied into the reorder
-    /// buffer; follow with [`drain`](Self::drain) to emit anything that just
-    /// became contiguous. The in-order frame itself is *not* copied — the
-    /// caller delivers it straight from its own buffer when told [`Accept::InOrder`].
+    /// Offers one frame. The payload is copied into the reorder buffer;
+    /// delivery of every contiguous frame happens in
+    /// [`drain`](Self::drain), which owns the only copy the caller sees.
     pub fn accept(&mut self, seq: u32, payload: &[u8]) -> Accept {
         assert!(payload.len() <= MAX_RELIABLE_PAYLOAD);
         let diff = seq.wrapping_sub(self.next);
         if diff > u32::MAX / 2 {
             return Accept::Duplicate; // older than the cumulative point
         }
-        match diff {
-            0 => {
-                self.advance();
-                Accept::InOrder
-            }
-            d if d < SACK_BITS => {
-                let bit = 1u32 << (d - 1);
-                if self.ahead & bit != 0 {
-                    return Accept::Duplicate;
-                }
-                let slot = &mut self.slots[(d - 1) as usize];
-                slot.bytes[..payload.len()].copy_from_slice(payload);
-                slot.len = payload.len();
-                self.ahead |= bit;
-                Accept::Buffered
-            }
-            _ => Accept::Overflow, // cannot represent in the SACK window
+        if diff >= SACK_BITS {
+            return Accept::Overflow; // beyond the reorder window
+        }
+        let bit = 1u32 << diff;
+        if self.map & bit != 0 {
+            return Accept::Duplicate;
+        }
+        let slot = &mut self.slots[diff as usize];
+        slot.bytes[..payload.len()].copy_from_slice(payload);
+        slot.len = payload.len();
+        self.map |= bit;
+        if diff == 0 {
+            Accept::InOrder
+        } else {
+            Accept::Buffered
         }
     }
 
-    /// Delivers every frame that became contiguous via `out(seq, payload)`;
-    /// returns the count delivered.
+    /// Delivers every contiguous frame via `out(seq, payload)` — starting
+    /// with any ready frame at `next`, then each buffered successor. Returns
+    /// the count delivered.
     pub fn drain(&mut self, out: &mut dyn FnMut(u32, &[u8])) -> usize {
+        const SLOTS: usize = SACK_BITS as usize;
         let mut delivered = 0;
-        while self.ahead & 1 != 0 {
-            let slot = &mut self.slots[0];
-            let len = slot.len;
-            let bytes = slot.bytes;
-            slot.len = 0;
-            self.ahead &= !1;
-            self.advance();
+        while self.map & 1 != 0 {
+            let seq = self.next;
+            let len = self.slots[0].len;
+            // Copy out before shifting the window down one slot.
+            let mut frame = [0u8; MAX_RELIABLE_PAYLOAD];
+            frame[..len].copy_from_slice(&self.slots[0].bytes[..len]);
+            for i in 0..SLOTS - 1 {
+                self.slots[i] = self.slots[i + 1].take();
+            }
+            self.slots[SLOTS - 1] = RxSlot {
+                len: 0,
+                bytes: [0u8; MAX_RELIABLE_PAYLOAD],
+            };
+            self.map >>= 1;
+            self.next = self.next.wrapping_add(1);
             delivered += 1;
-            out(self.next.wrapping_sub(1), &bytes[..len]);
+            out(seq, &frame[..len]);
         }
         delivered
     }
@@ -359,15 +372,21 @@ impl ReliableRx {
     pub fn build_ack(&self, rtt_sample_ns: u64) -> AckFrame {
         AckFrame {
             base_seq: self.next,
-            bitmap: self.ahead,
+            bitmap: self.map >> 1,
             rtt_sample_ns,
         }
     }
+}
 
-    /// Advances past one delivered in-order frame.
-    fn advance(&mut self) {
-        self.next = self.next.wrapping_add(1);
-        self.ahead >>= 1;
+impl RxSlot {
+    fn take(&mut self) -> RxSlot {
+        core::mem::replace(
+            self,
+            RxSlot {
+                len: 0,
+                bytes: [0u8; MAX_RELIABLE_PAYLOAD],
+            },
+        )
     }
 }
 
@@ -379,11 +398,11 @@ mod tests {
 
     #[cfg(test)]
     impl ReliableRx {
-        /// Test hook: fast-forwards the cumulative point without delivery.
+        /// Test hook: fast-forwards the cumulative point, keeping the map
+        /// invariant (bit i ⇔ slot i holds seq = next + i).
         fn advance_for_test(&mut self, n: u32) {
-            for _ in 0..n {
-                self.advance();
-            }
+            self.next = self.next.wrapping_add(n);
+            self.map = if n >= SACK_BITS { 0 } else { self.map >> n };
         }
     }
 
@@ -425,13 +444,12 @@ mod tests {
 
         for seq in 0u32..8 {
             tx.send(seq, &[seq as u8; 4], seq as u64 * MS).unwrap();
-            if rx.accept(seq, &[seq as u8; 4]) != Accept::InOrder {
-                panic!("in-order frame misclassified");
-            }
+            assert_eq!(rx.accept(seq, &[seq as u8; 4]), Accept::InOrder);
             rx.drain(&mut |s, p| delivered.push((s, p.to_vec())));
         }
         assert_eq!(tx.in_flight(), 8, "nothing acked yet");
-        let ack = rx.build_ack(1 * MS);
+        let ack = rx.build_ack(MS);
+        assert_eq!((ack.base_seq, ack.bitmap), (8, 0));
         tx.on_ack(&ack, 8 * MS);
         assert_eq!(tx.in_flight(), 0);
         assert_eq!(
@@ -448,19 +466,24 @@ mod tests {
         assert_eq!(rx.accept(3, b"three"), Accept::Buffered);
 
         let ack = rx.build_ack(0);
-        assert_eq!(ack.base_seq, 1);
-        assert_eq!(ack.bitmap, 0b011); // seqs 2,3
+        assert_eq!(ack.base_seq, 0);
+        assert_eq!(ack.bitmap, 0b110, "SACK bits point at seqs 2 and 3");
 
         assert_eq!(rx.buffered_count(), 2);
         assert_eq!(rx.accept(2, b"dup"), Accept::Duplicate);
 
-        // Gap fills → both buffered frames emerge in order.
-        assert_eq!(rx.accept(1, b"one"), Accept::InOrder);
+        // Gap fill arrives buffered too; one drain releases the whole chain.
+        assert_eq!(rx.accept(1, b"one"), Accept::Buffered);
         let mut got = Vec::new();
-        assert_eq!(rx.drain(&mut |s, p| got.push((s, p.to_vec()))), 2);
+        assert_eq!(rx.drain(&mut |s, p| got.push((s, p.to_vec()))), 4);
         assert_eq!(
             got,
-            vec![(2, b"two".to_vec()), (3, b"three".to_vec())]
+            vec![
+                (0, b"zero".to_vec()),
+                (1, b"one".to_vec()),
+                (2, b"two".to_vec()),
+                (3, b"three".to_vec())
+            ]
         );
         assert_eq!(rx.build_ack(0).base_seq, 4);
     }
@@ -475,30 +498,33 @@ mod tests {
         for seq in 0u32..4 {
             tx.send(seq, &[b'p', seq as u8], now0).unwrap();
         }
-        // Wire drops seq 1 entirely.
+        // Wire drops seq 1 entirely; 0 lands in-order, 2/3 buffer.
         assert_eq!(rx.accept(0, &[b'p', 0]), Accept::InOrder);
         assert_eq!(rx.accept(2, &[b'p', 2]), Accept::Buffered);
         assert_eq!(rx.accept(3, &[b'p', 3]), Accept::Buffered);
         let ack = rx.build_ack(2 * MS);
         assert!(!ack.covers(1));
 
-        // Sender frees 0, 2, 3; keeps 1.
+        // Sender frees the SACKed 2 and 3; 0 and 1 remain in flight.
         let rtt = tx.on_ack(&ack, now0 + 2 * MS);
         assert!(rtt.is_some());
-        assert_eq!(tx.in_flight(), 1);
+        assert_eq!(tx.in_flight(), 2);
 
-        // RTO fires → seq 1 retransmitted.
+        // RTO fires → 0 and 1 retransmitted.
         let mut resent = Vec::new();
         let n = tx.tick(now0 + 12 * MS, cfg.rto_ns, &mut |s, p| {
             resent.push((s, p.to_vec()))
         });
-        assert_eq!((n, tx.max_resends()), (1, 1));
+        assert_eq!(n, 2);
+        assert_eq!(tx.max_resends(), 1);
 
-        // Retransmission arrives → full ordered delivery.
-        assert_eq!(rx.accept(1, &resent[0].1), Accept::InOrder);
+        // Retransmissions arrive → full ordered delivery.
+        for (seq, payload) in &resent {
+            let _ = rx.accept(*seq, payload);
+        }
         let mut order = Vec::new();
         rx.drain(&mut |s, _| order.push(s));
-        assert_eq!(order, vec![2, 3]);
+        assert_eq!(order, vec![0, 1, 2, 3]);
         assert_eq!(rx.next_expected(), 4);
     }
 
@@ -518,9 +544,9 @@ mod tests {
             bitmap: 0,
             rtt_sample_ns: 0,
         };
-        tx.on_ack(&ack, 1 * MS);
-        assert!(tx.send(4, b"x", 1 * MS).is_ok());
-        assert!(tx.send(6, b"x", 1 * MS).is_err()); // beyond window span
+        tx.on_ack(&ack, MS);
+        assert!(tx.send(4, b"x", MS).is_ok());
+        assert!(tx.send(6, b"x", MS).is_err()); // beyond window span
     }
 
     #[test]
@@ -528,14 +554,10 @@ mod tests {
         let mut rx = ReliableRx::new();
         assert_eq!(rx.accept(0, b"a"), Accept::InOrder);
         assert_eq!(rx.accept(0, b"a-dup"), Accept::Duplicate);
-        assert_eq!(rx.accept(5, b"far"), Accept::Overflow);
-        assert_eq!(rx.accept(7, b"far"), Accept::Overflow);
+        // Far beyond the 32-frame reorder window.
+        assert_eq!(rx.accept(SACK_BITS + 5, b"far"), Accept::Overflow);
         // Old sequence from before the cumulative point.
         rx.advance_for_test(10);
         assert_eq!(rx.accept(3, b"ancient"), Accept::Duplicate);
     }
 }
-
-
-
-

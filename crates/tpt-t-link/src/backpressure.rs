@@ -220,9 +220,11 @@ impl Backpressure {
         if gained > 0 {
             // Bucket size: one second of link capacity (burst allowance).
             let burst_cap = cap_bps / 8 * TOKEN_SCALE;
-            let _ = self.tokens.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |t| {
-                Some((t + gained).min(burst_cap.max(TOKEN_SCALE)))
-            });
+            let _ = self
+                .tokens
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |t| {
+                    Some((t + gained).min(burst_cap.max(TOKEN_SCALE)))
+                });
         }
     }
 
@@ -235,11 +237,7 @@ impl Backpressure {
         match self
             .tokens
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |t| {
-                if t >= want {
-                    Some(t - want)
-                } else {
-                    None
-                }
+                if t >= want { Some(t - want) } else { None }
             }) {
             Ok(_) => true,
             Err(_) => {
@@ -381,6 +379,3 @@ mod tests {
         assert!(bp.queue_depth() < 4);
     }
 }
-
-
-
