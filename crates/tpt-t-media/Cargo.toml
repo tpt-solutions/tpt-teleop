@@ -1,0 +1,15 @@
+[package]
+name = "tpt-t-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Zero-copy camera ingestion, slab frame pools, hardware-accelerated encoding, AR HUD burn-in (tpt-teleop)"
+
+[dependencies]
+tpt-t-core = { workspace = true }
+
+[lints]
+workspace = true

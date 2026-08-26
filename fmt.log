@@ -1,0 +1,482 @@
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\benches\intercept_bench.rs:26:
+         Arc::clone(&input),
+         Arc::clone(&output),
+         Arc::clone(&machine),
+[31m-        SafetyConfig { transition_s: 0.001, ..SafetyConfig::default() },
+[0m[32m+        SafetyConfig {
+[0m[32m+            transition_s: 0.001,
+[0m[32m+            ..SafetyConfig::default()
+[0m[32m+        },
+[0m     );
+     let mut pose = tpt_t_hal::Pose6D::default();
+     pose.z = 50.0;
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\benches\intercept_bench.rs:35:
+     // Warm-up + fill caches/branch predictors.
+     for i in 0..1000u64 {
+         input
+[31m-            .push(ControlCommand { seq: i, timestamp_ns: i, ..ControlCommand::zeroed(Mode::FullTeleop) })
+[0m[32m+            .push(ControlCommand {
+[0m[32m+                seq: i,
+[0m[32m+                timestamp_ns: i,
+[0m[32m+                ..ControlCommand::zeroed(Mode::FullTeleop)
+[0m[32m+            })
+[0m             .unwrap();
+         let _ = black_box(loop_.process_one(i * 100));
+         let _ = black_box(output.pop());
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\benches\intercept_bench.rs:44:
+     let mut samples: Vec<u32> = Vec::with_capacity(ITERATIONS as usize);
+     for i in 0..ITERATIONS as u64 {
+         input
+[31m-            .push(ControlCommand { seq: i, timestamp_ns: i, ..ControlCommand::zeroed(Mode::FullTeleop) })
+[0m[32m+            .push(ControlCommand {
+[0m[32m+                seq: i,
+[0m[32m+                timestamp_ns: i,
+[0m[32m+                ..ControlCommand::zeroed(Mode::FullTeleop)
+[0m[32m+            })
+[0m             .unwrap();
+         let t0 = Instant::now();
+         let stats = black_box(loop_.process_one(black_box(i * 100)));
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\benches\intercept_bench.rs:70:
+     );
+ 
+     let under_budget = pct(0.999) < 10_000;
+[31m-    println!("p99.9 < 10 µs budget: {}", if under_budget { "PASS" } else { "FAIL" });
+[0m[32m+    println!(
+[0m[32m+        "p99.9 < 10 µs budget: {}",
+[0m[32m+        if under_budget { "PASS" } else { "FAIL" }
+[0m[32m+    );
+[0m }
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\geo.rs:143:
+     use tpt_t_core::Mode;
+ 
+     fn pose_at(x: f64, y: f64, z: f64) -> Pose6D {
+[31m-        Pose6D { x, y, z, ..Pose6D::default() }
+[0m[32m+        Pose6D {
+[0m[32m+            x,
+[0m[32m+            y,
+[0m[32m+            z,
+[0m[32m+            ..Pose6D::default()
+[0m[32m+        }
+[0m     }
+ 
+     #[test]
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\geo.rs:150:
+     fn verdict_zones_are_ordered() {
+         let fence = GeoFence::default(); // r=500, z∈[0,120]
+[31m-        assert_eq!(fence.evaluate(&pose_at(0.0, 0.0, 50.0)), FenceVerdict::Inside);
+[0m[31m-        assert_eq!(fence.evaluate(&pose_at(480.0, 0.0, 50.0)), FenceVerdict::SoftWarn);
+[0m[31m-        assert_eq!(fence.evaluate(&pose_at(501.0, 0.0, 50.0)), FenceVerdict::HardBreach);
+[0m[31m-        assert_eq!(fence.evaluate(&pose_at(0.0, 0.0, 119.0)), FenceVerdict::SoftWarn);
+[0m[31m-        assert_eq!(fence.evaluate(&pose_at(0.0, 0.0, 121.0)), FenceVerdict::HardBreach);
+[0m[32m+        assert_eq!(
+[0m[32m+            fence.evaluate(&pose_at(0.0, 0.0, 50.0)),
+[0m[32m+            FenceVerdict::Inside
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            fence.evaluate(&pose_at(480.0, 0.0, 50.0)),
+[0m[32m+            FenceVerdict::SoftWarn
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            fence.evaluate(&pose_at(501.0, 0.0, 50.0)),
+[0m[32m+            FenceVerdict::HardBreach
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            fence.evaluate(&pose_at(0.0, 0.0, 119.0)),
+[0m[32m+            FenceVerdict::SoftWarn
+[0m[32m+        );
+[0m[32m+        assert_eq!(
+[0m[32m+            fence.evaluate(&pose_at(0.0, 0.0, 121.0)),
+[0m[32m+            FenceVerdict::HardBreach
+[0m[32m+        );
+[0m     }
+ 
+     #[test]
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\geo.rs:177:
+ 
+     #[test]
+     fn soft_warning_attenuates_partially_not_fully() {
+[31m-        let fence = GeoFence { radius_m: 100.0, ..GeoFence::default() };
+[0m[32m+        let fence = GeoFence {
+[0m[32m+            radius_m: 100.0,
+[0m[32m+            ..GeoFence::default()
+[0m[32m+        };
+[0m         let pose = pose_at(98.0, 0.0, 50.0); // 60 % into the soft band
+         let mut cmd = ControlCommand::zeroed(Mode::Assist);
+         cmd.axes[axis::LAT_X] = 1.0;
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\geo.rs:184:
+ 
+         fence.clamp_command(&pose, FenceVerdict::SoftWarn, &mut cmd);
+         let v = cmd.axes[axis::LAT_X];
+[31m-        assert!(v > 0.2 && v < 0.9, "soft warn must partially attenuate, got {v}");
+[0m[32m+        assert!(
+[0m[32m+            v > 0.2 && v < 0.9,
+[0m[32m+            "soft warn must partially attenuate, got {v}"
+[0m[32m+        );
+[0m     }
+ 
+     #[test]
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\latency.rs:27:
+     /// New tracker; `alpha` is the EWMA factor (0..1, higher = snappier),
+     /// `max_ns` the delay beyond which attenuation bottoms out.
+     pub fn new(alpha: f64, max_ns: u64) -> Self {
+[31m-        Self { ewma_ns: 0.0, alpha: alpha.clamp(0.01, 1.0), max_ns: max_ns.max(1) as f64, samples: 0 }
+[0m[32m+        Self {
+[0m[32m+            ewma_ns: 0.0,
+[0m[32m+            alpha: alpha.clamp(0.01, 1.0),
+[0m[32m+            max_ns: max_ns.max(1) as f64,
+[0m[32m+            samples: 0,
+[0m[32m+        }
+[0m     }
+ 
+     /// Records one observation (`now − stamp`) clamped to ≥ 0 and returns the
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\lib.rs:14:
+ pub mod rt;
+ pub mod spline;
+ 
+[31m-pub use geo::{axis, FenceVerdict, GeoFence};
+[0m[32m+pub use geo::{FenceVerdict, GeoFence, axis};
+[0m pub use latency::LatencyCompensator;
+[31m-pub use limits::{write_emergency_stop, KinematicLimits};
+[0m[32m+pub use limits::{KinematicLimits, write_emergency_stop};
+[0m pub use loop_::{InterceptStats, SafetyConfig, SafetyLoop, SafetyThreadHandle};
+[31m-pub use rt::{elevate_current_thread, RtError};
+[0m[31m-pub use spline::{authority_target, smootherstep, AuthorityBlend};
+[0m[32m+pub use rt::{RtError, elevate_current_thread};
+[0m[32m+pub use spline::{AuthorityBlend, authority_target, smootherstep};
+[0m 
+ /// Crate version.
+ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\lib.rs:26:
+[31m-
+[0m 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:12:
+ //! lock-free and allocation-free — the <10 µs intercept budget in
+ //! `benches/intercept_bench.rs` measures exactly this section.
+ 
+[31m-use std::sync::atomic::{AtomicBool, Ordering};
+[0m use std::sync::Arc;
+[32m+use std::sync::atomic::{AtomicBool, Ordering};
+[0m use std::thread::JoinHandle;
+ use std::time::{Duration, Instant};
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:23:
+ 
+ use crate::geo::{FenceVerdict, GeoFence};
+ use crate::latency::LatencyCompensator;
+[31m-use crate::limits::{write_emergency_stop, KinematicLimits};
+[0m[32m+use crate::limits::{KinematicLimits, write_emergency_stop};
+[0m use crate::rt;
+[31m-use crate::spline::{authority_target, AuthorityBlend};
+[0m[32m+use crate::spline::{AuthorityBlend, authority_target};
+[0m use tpt_t_hal::Pose6D;
+ 
+ /// Tunables for one loop instance.
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:128:
+         self.machine.try_transition(mode)?;
+         let to = authority_target(mode);
+         if (to - self.authority).abs() > 1e-6 {
+[31m-            self.blend =
+[0m[31m-                Some(AuthorityBlend::new(self.authority, to, self.cfg.transition_s));
+[0m[32m+            self.blend = Some(AuthorityBlend::new(
+[0m[32m+                self.authority,
+[0m[32m+                to,
+[0m[32m+                self.cfg.transition_s,
+[0m[32m+            ));
+[0m         }
+         Ok(())
+     }
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:185:
+         }
+         if self.authority < 0.9999 {
+             for k in 0..cmd.axes.len() {
+[31m-                cmd.axes[k] = self.baseline.axes[k] * (1.0 - self.authority)
+[0m[31m-                    + cmd.axes[k] * self.authority;
+[0m[32m+                cmd.axes[k] =
+[0m[32m+                    self.baseline.axes[k] * (1.0 - self.authority) + cmd.axes[k] * self.authority;
+[0m             }
+[31m-            cmd.mode = if self.authority >= 0.5 { cmd.mode } else { self.baseline.mode };
+[0m[32m+            cmd.mode = if self.authority >= 0.5 {
+[0m[32m+                cmd.mode
+[0m[32m+            } else {
+[0m[32m+                self.baseline.mode
+[0m[32m+            };
+[0m         }
+ 
+         // 3) Geofence projection (soft attenuate / hard suppress).
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:216:
+             // Downstream stalled: count the drop, never block the RT thread.
+             self.dropped_out += 1;
+         }
+[31m-        Some(InterceptStats { drained, intercepted_ns })
+[0m[32m+        Some(InterceptStats {
+[0m[32m+            drained,
+[0m[32m+            intercepted_ns,
+[0m[32m+        })
+[0m     }
+ 
+     /// Runs ticks until `stop` is raised. Sleep-based pacing keeps CPU usage
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\loop_.rs:248:
+                     std::thread::sleep(period);
+                 }
+             })?;
+[31m-        Ok(SafetyThreadHandle { stop, rt_ok, join: Some(join) })
+[0m[32m+        Ok(SafetyThreadHandle {
+[0m[32m+            stop,
+[0m[32m+            rt_ok,
+[0m[32m+            join: Some(join),
+[0m[32m+        })
+[0m     }
+ }
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\rt.rs:70:
+         // SAFETY: FFI with stack-resident buffer; stable Mach interface.
+         unsafe {
+             let port = libc::pthread_mach_thread_np(libc::pthread_self());
+[31m-            let mut policy: [u32; 4] =
+[0m[31m-                [0, COMPUTE_TICKS, CONSTRAINT_TICKS, 0]; // period, compute, constraint, preemptible=false
+[0m[32m+            let mut policy: [u32; 4] = [0, COMPUTE_TICKS, CONSTRAINT_TICKS, 0]; // period, compute, constraint, preemptible=false
+[0m             let kr = thread_policy_set(
+                 port,
+                 THREAD_TIME_CONSTRAINT_POLICY,
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\spline.rs:23:
+ /// Target authority fraction per operating mode.
+ pub fn authority_target(mode: Mode) -> f32 {
+     match mode {
+[31m-        Mode::Auto => 0.0,           // autonomy fully in command
+[0m[31m-        Mode::Assist => 0.5,         // blended shared control
+[0m[31m-        Mode::FullTeleop => 1.0,     // operator fully in command
+[0m[31m-        Mode::EmergencyStop => 0.0,  // irrelevant: E-stop overrides output
+[0m[32m+        Mode::Auto => 0.0,          // autonomy fully in command
+[0m[32m+        Mode::Assist => 0.5,        // blended shared control
+[0m[32m+        Mode::FullTeleop => 1.0,    // operator fully in command
+[0m[32m+        Mode::EmergencyStop => 0.0, // irrelevant: E-stop overrides output
+[0m     }
+ }
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\spline.rs:42:
+ impl AuthorityBlend {
+     /// Starts a blend lasting `duration_s`.
+     pub fn new(from_weight: f32, to_weight: f32, duration_s: f32) -> Self {
+[31m-        Self { from_weight, to_weight, duration_s: duration_s.max(1e-3), elapsed_s: 0.0 }
+[0m[32m+        Self {
+[0m[32m+            from_weight,
+[0m[32m+            to_weight,
+[0m[32m+            duration_s: duration_s.max(1e-3),
+[0m[32m+            elapsed_s: 0.0,
+[0m[32m+        }
+[0m     }
+ 
+     /// Advances time by `dt_s`; returns the current authority weight.
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\spline.rs:76:
+     if table_allows(current, requested) {
+         Ok(())
+     } else {
+[31m-        Err(ModeError::Disallowed { from: current, to: requested })
+[0m[32m+        Err(ModeError::Disallowed {
+[0m[32m+            from: current,
+[0m[32m+            to: requested,
+[0m[32m+        })
+[0m     }
+ }
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\spline.rs:102:
+         let h = 1e-3;
+         let d0 = smootherstep(h) - smootherstep(0.0);
+         let d1 = smootherstep(1.0) - smootherstep(1.0 - h);
+[31m-        assert!(d0 < 1e-9 && d1 < 1e-9, "endpoint slopes must vanish: {d0} {d1}");
+[0m[32m+        assert!(
+[0m[32m+            d0 < 1e-9 && d1 < 1e-9,
+[0m[32m+            "endpoint slopes must vanish: {d0} {d1}"
+[0m[32m+        );
+[0m     }
+ 
+     #[test]
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\src\spline.rs:127:
+ 
+     #[test]
+     fn illegal_transition_rejected_by_checker() {
+[31m-        assert!(check_transition(Mode::Auto, Mode::Assist, |f, t| t.as_u8() == f.as_u8() + 1)
+[0m[31m-            .is_ok());
+[0m[32m+        assert!(
+[0m[32m+            check_transition(Mode::Auto, Mode::Assist, |f, t| t.as_u8() == f.as_u8() + 1).is_ok()
+[0m[32m+        );
+[0m         assert!(check_transition(Mode::Auto, Mode::FullTeleop, |_, _| false).is_err());
+     }
+ }
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:9:
+ use tpt_t_hal::sim::DT_S;
+ use tpt_t_hal::{CanBus, CanFrame, Pose6D, QuadDrone, World, can_pair, ids};
+ use tpt_t_ring::SpscRing;
+[31m-use tpt_t_safety::{
+[0m[31m-    GeoFence, KinematicLimits, SafetyConfig, SafetyLoop, axis,
+[0m[31m-};
+[0m[32m+use tpt_t_safety::{GeoFence, KinematicLimits, SafetyConfig, SafetyLoop, axis};
+[0m 
+ /// Builds a loop wired between fresh rings with the given config.
+[31m-fn make_loop(cfg: SafetyConfig) -> (Arc<SpscRing<ControlCommand>>, Arc<SpscRing<ControlCommand>>, SafetyLoop) {
+[0m[32m+fn make_loop(
+[0m[32m+    cfg: SafetyConfig,
+[0m[32m+) -> (
+[0m[32m+    Arc<SpscRing<ControlCommand>>,
+[0m[32m+    Arc<SpscRing<ControlCommand>>,
+[0m[32m+    SafetyLoop,
+[0m[32m+) {
+[0m     let input = Arc::new(SpscRing::with_capacity(64));
+     let output = Arc::new(SpscRing::with_capacity(64));
+     let machine = Arc::new(StateMachine::new());
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:21:
+[31m-    let l = SafetyLoop::new(Arc::clone(&input), Arc::clone(&output), Arc::clone(&machine), cfg);
+[0m[32m+    let l = SafetyLoop::new(
+[0m[32m+        Arc::clone(&input),
+[0m[32m+        Arc::clone(&output),
+[0m[32m+        Arc::clone(&machine),
+[0m[32m+        cfg,
+[0m[32m+    );
+[0m     (input, output, l)
+ }
+ 
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:25:
+[31m-fn teleop_cmd(seq: u64, ts: u64, roll: f32, pitch: f32, throttle: f32, lat_x: f32) -> ControlCommand {
+[0m[32m+fn teleop_cmd(
+[0m[32m+    seq: u64,
+[0m[32m+    ts: u64,
+[0m[32m+    roll: f32,
+[0m[32m+    pitch: f32,
+[0m[32m+    throttle: f32,
+[0m[32m+    lat_x: f32,
+[0m[32m+) -> ControlCommand {
+[0m     let mut c = ControlCommand::zeroed(Mode::FullTeleop);
+     c.seq = seq;
+     c.timestamp_ns = ts;
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:36:
+ #[test]
+ fn hostile_operator_commands_emerge_bounded_and_slewed() {
+     let cfg = SafetyConfig {
+[31m-        limits: KinematicLimits { max_axis_step: 0.02, ..KinematicLimits::default() },
+[0m[32m+        limits: KinematicLimits {
+[0m[32m+            max_axis_step: 0.02,
+[0m[32m+            ..KinematicLimits::default()
+[0m[32m+        },
+[0m         ..SafetyConfig::default()
+     };
+     let (input, output, mut l) = make_loop(cfg);
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:45:
+ 
+     let mut last_roll = 0.0f32;
+     for i in 0..200u64 {
+[31m-        input.push(teleop_cmd(i, i * 5_000_000, 9.9, -9.9, 0.7, 5.0)).unwrap();
+[0m[32m+        input
+[0m[32m+            .push(teleop_cmd(i, i * 5_000_000, 9.9, -9.9, 0.7, 5.0))
+[0m[32m+            .unwrap();
+[0m         let st = l.process_one(i * 5_000_000).expect("command pending");
+         let out = output.pop().expect("output produced");
+         assert_eq!(st.drained, 1);
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:52:
+[31m-        assert!(out.axes[axis::ROLL].abs() <= 0.35 + 1e-6, "tilt clamp violated");
+[0m[32m+        assert!(
+[0m[32m+            out.axes[axis::ROLL].abs() <= 0.35 + 1e-6,
+[0m[32m+            "tilt clamp violated"
+[0m[32m+        );
+[0m         assert!(out.axes[axis::THROTTLE] <= 1.0);
+         // Slew: per-tick movement on roll is bounded by max_axis_step.
+         assert!(
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:68:
+     let _ = l.request_mode(Mode::FullTeleop);
+ 
+     // Vehicle reported far outside the default 500 m fence.
+[31m-    l.set_pose(&tpt_t_hal::Pose6D { x: 900.0, y: 0.0, z: 40.0, ..Default::default() });
+[0m[32m+    l.set_pose(&tpt_t_hal::Pose6D {
+[0m[32m+        x: 900.0,
+[0m[32m+        y: 0.0,
+[0m[32m+        z: 40.0,
+[0m[32m+        ..Default::default()
+[0m[32m+    });
+[0m 
+     input.push(teleop_cmd(1, 0, 0.0, 0.0, 0.8, 0.0)).unwrap();
+     l.process_one(5_000_000).unwrap();
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:77:
+     let out = output.pop().unwrap();
+     assert_eq!(out.mode(), Some(Mode::EmergencyStop));
+     assert_eq!(out.flags & 1, 1);
+[31m-    assert!(out.axes.iter().all(|&a| a == 0.0), "E-stop output must be neutral");
+[0m[32m+    assert!(
+[0m[32m+        out.axes.iter().all(|&a| a == 0.0),
+[0m[32m+        "E-stop output must be neutral"
+[0m[32m+    );
+[0m 
+     // Sticky: subsequent commands stay overridden even with healthy pose.
+     l.set_pose(&tpt_t_hal::Pose6D::default());
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:101:
+ 
+ #[test]
+ fn handover_blend_is_monotonic_c2_and_reaches_target() {
+[31m-    let cfg = SafetyConfig { transition_s: 0.1, ..SafetyConfig::default() };
+[0m[32m+    let cfg = SafetyConfig {
+[0m[32m+        transition_s: 0.1,
+[0m[32m+        ..SafetyConfig::default()
+[0m[32m+    };
+[0m     let (_in, _out, mut l) = make_loop(cfg);
+ 
+     // Auto → Assist: authority 0 → 0.5 over 100 ms (20 ticks @ 5 ms).
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:115:
+         }
+         prev = a;
+     }
+[31m-    assert!((l.authority() - 0.5).abs() < 1e-3, "must land exactly on Assist");
+[0m[32m+    assert!(
+[0m[32m+        (l.authority() - 0.5).abs() < 1e-3,
+[0m[32m+        "must land exactly on Assist"
+[0m[32m+    );
+[0m 
+     // Assist → FullTeleop continues smoothly to 1.0.
+     l.request_mode(Mode::FullTeleop).unwrap();
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:135:
+     let handle = l.spawn().expect("spawn");
+ 
+     for i in 0..50u64 {
+[31m-        input.push(teleop_cmd(i, i * 1_000_000, 0.1, 0.1, 0.55, 0.0)).unwrap();
+[0m[32m+        input
+[0m[32m+            .push(teleop_cmd(i, i * 1_000_000, 0.1, 0.1, 0.55, 0.0))
+[0m[32m+            .unwrap();
+[0m         std::thread::sleep(std::time::Duration::from_millis(2));
+     }
+     std::thread::sleep(std::time::Duration::from_millis(30));
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:158:
+     let (mut can_op, mut can_veh) = can_pair(16);
+ 
+     let cfg = SafetyConfig {
+[31m-        fence: GeoFence { radius_m: 60.0, max_alt_m: 20.0, ..GeoFence::default() },
+[0m[32m+        fence: GeoFence {
+[0m[32m+            radius_m: 60.0,
+[0m[32m+            max_alt_m: 20.0,
+[0m[32m+            ..GeoFence::default()
+[0m[32m+        },
+[0m         transition_s: 0.05,
+         ..SafetyConfig::default()
+     };
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:173:
+     let ticks = 900usize; // 4.5 s @ 200 Hz
+     for tick in 0..ticks {
+         // Hostile operator: full-over lateral command + steep climb.
+[31m-        input.push(teleop_cmd(tick as u64, tick as u64 * 5_000_000, 9.0, 0.0, 0.75, 9.0)).unwrap();
+[0m[32m+        input
+[0m[32m+            .push(teleop_cmd(
+[0m[32m+                tick as u64,
+[0m[32m+                tick as u64 * 5_000_000,
+[0m[32m+                9.0,
+[0m[32m+                0.0,
+[0m[32m+                0.75,
+[0m[32m+                9.0,
+[0m[32m+            ))
+[0m[32m+            .unwrap();
+[0m 
+         // RT safety intercept.
+         l.process_one((tick as u64) * 5_000_000);
+Diff in \\?\C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-safety\tests\e2e_safety.rs:219:
+     }
+     CanFrame::new(ids::MOTOR_CMD, &payload)
+ }
+[31m-
+[0m 
+FMT=0  

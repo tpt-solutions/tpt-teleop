@@ -9,30 +9,30 @@ in `spec.txt` §6.
 
 ```
                        ┌────────────────────┐
-                       │   tpt-teleop-cli   │  scaffolding / deny config /
+                       │   tpt-t-cli   │  scaffolding / deny config /
                        └─────────┬──────────┘  core-pinning profiles
                                  │ uses
         ┌────────────────────────┼────────────────────────┐
-        │                 tpt-teleop-core                  │
+        │                 tpt-t-core                  │
         │     state machine · message bus · event loop     │
         │     thread pinning · rkyv types · buffer pool    │
         └──┬──────┬──────────┬───────────┬──────────┬─────┘
            │      │          │           │          │
-    tpt-teleop-input│  tpt-teleop-media│  tpt-teleop-cloud
+    tpt-t-input│  tpt-t-media│  tpt-t-cloud
            │      │          │           │          │
-    tpt-teleop-safety   tpt-teleop-link  tpt-teleop-sec
+    tpt-t-safety   tpt-t-link  tpt-t-sec
            │      │                      │
-           └──────┴──── tpt-teleop-hal ──┘
+           └──────┴──── tpt-t-hal ──┘
                           │
-                  tpt-teleop-analytics
+                  tpt-t-analytics
 ```
 
 Foundation layers (no upward deps):
 
-* **tpt-teleop-ring** — wait-free SPSC ring buffers over shared memory layouts;
+* **tpt-t-ring** — wait-free SPSC ring buffers over shared memory layouts;
   zero-copy pointer passing and byte↔struct casting utilities. Everything
   communicates through these; nothing allocates or locks in the hot path.
-* **tpt-teleop-core** — central state machine (Auto/Assist/FullTeleop/
+* **tpt-t-core** — central state machine (Auto/Assist/FullTeleop/
   EmergencyStop), custom lock-free MPMC queue + fan-out message bus, the
   platform event-loop abstraction (io_uring / kqueue / IOCP), CPU core-pinning
   helpers and profile configs, and the rkyv wire types (`ControlCommand`,
@@ -40,18 +40,18 @@ Foundation layers (no upward deps):
 
 Subsystems (depend on foundation only):
 
-* **tpt-teleop-input** polls raw HID/evdev reports and casts them zero-copy
+* **tpt-t-input** polls raw HID/evdev reports and casts them zero-copy
   into `ControlCommand`s.
-* **tpt-teleop-safety** runs on a dedicated RT thread, pops commands from a
+* **tpt-t-safety** runs on a dedicated RT thread, pops commands from a
   ring, applies geofence/kinematic limits in place, pushes to the output ring.
-* **tpt-teleop-link** multiplexes control/telemetry/WebRTC ICE over one UDP
+* **tpt-t-link** multiplexes control/telemetry/WebRTC ICE over one UDP
   port, serializing with rkyv directly into pre-allocated packet buffers.
-* **tpt-teleop-media** ingests camera frames into slab-allocated frame pools
+* **tpt-t-media** ingests camera frames into slab-allocated frame pools
   and hardware-encodes with telemetry burn-in.
-* **tpt-teleop-hal** abstracts motors/sensors/CAN/cameras behind one trait set;
+* **tpt-t-hal** abstracts motors/sensors/CAN/cameras behind one trait set;
   ships a rapier-based physics simulator backend plus real SocketCAN/MAVLink
   backends.
-* **tpt-teleop-cloud**, **tpt-teleop-sec**, **tpt-teleop-analytics** provide
+* **tpt-t-cloud**, **tpt-t-sec**, **tpt-t-analytics** provide
   fleet HTTP/3 + SFU, zero-trust E2EE, and direct-I/O FDR logging respectively.
 
 ## 2. Threading Model — Thread Per Core
@@ -68,11 +68,11 @@ CPU cores, pinned at startup:
 | Storage/FDR | 4 | analytics writer |
 
 Profiles live in a plain-text core-pinning config parsed by
-`tpt-teleop-core::profile` (see that module's docs for the format).
+`tpt-t-core::profile` (see that module's docs for the format).
 
 ## 3. Event Loops
 
-One abstraction (`tpt-teleop-core::eventloop::EventLoop`), three backends:
+One abstraction (`tpt-t-core::eventloop::EventLoop`), three backends:
 
 * Linux — raw `io_uring` submission/completion rings (`io-uring` crate).
 * macOS/BSD — `kqueue`/`kevent` via `libc`.
@@ -86,16 +86,16 @@ handles `Token` readiness callbacks.
 From `spec.txt` §6:
 
 ```
- Ingest     tpt-teleop-input reads a raw HID report from the OS.
+ Ingest     tpt-t-input reads a raw HID report from the OS.
             │
  Normalize  raw bytes cast (zero-copy) into a ControlCommand struct.
             │
- Route      struct pushed into a tpt-teleop-ring SPSC queue.
+ Route      struct pushed into a tpt-t-ring SPSC queue.
             │
  Safety     safety loop pops, checks geofences, mutates in place,
             │       pushes to the next ring.
             │
- Serialize  tpt-teleop-link rkyv-serializes directly into a
+ Serialize  tpt-t-link rkyv-serializes directly into a
             │       pre-allocated UDP packet buffer.
             ▼
  Transmit   buffer handed to io_uring for zero-copy kernel send.
@@ -110,7 +110,7 @@ From `spec.txt` §6:
   `rkyv::{Archive, Serialize, Deserialize}`.
 * Archived buffers are aligned to 64 bytes (one cache line).
 * Hot-path ingress may bypass rkyv entirely using
-  `tpt-teleop-ring::cast` (byte slice ↔ struct casting) when both ends share
+  `tpt-t-ring::cast` (byte slice ↔ struct casting) when both ends share
   endianness/layout — e.g. shared-memory IPC on the same machine.
 * Every frame carries a magic/version header for forward compatibility.
 

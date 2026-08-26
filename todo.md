@@ -4,7 +4,7 @@ Tracks all work derived from `spec.txt`, ordered by build dependency/risk
 (not spec section order). Simulation-first: Phase 4 builds a mock hardware
 backend so Phases 5–8 can be built and tested before real hardware (Phase 9)
 is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
-> **Status (2026-08-26):** Phases 0-4 complete and validated — `cargo test` green on the Windows host; `cargo clippy -D warnings` clean on Windows, x86_64-linux-gnu and aarch64-apple-darwin targets; `cargo fmt --check` clean. See docs/ARCHITECTURE.md for the implemented design.
+> **Status (2026-08-26):** Phases 0-5 complete and validated — `cargo test` green on the Windows host; `cargo clippy -D warnings` clean on Windows, x86_64-linux-gnu and aarch64-apple-darwin targets; `cargo fmt --check` clean. See docs/ARCHITECTURE.md for the implemented design.
 
 
 ## Phase 0 — Foundation & Tooling
@@ -12,17 +12,17 @@ is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
 Goal: repo, licensing, and CI exist before any feature code is written.
 
 - [x] Initialize Cargo workspace (`Cargo.toml` with `[workspace]` members)
-- [x] Create skeleton crate: `tpt-teleop-core`
-- [x] Create skeleton crate: `tpt-teleop-ring`
-- [x] Create skeleton crate: `tpt-teleop-link`
-- [x] Create skeleton crate: `tpt-teleop-input`
-- [x] Create skeleton crate: `tpt-teleop-media`
-- [x] Create skeleton crate: `tpt-teleop-safety`
-- [x] Create skeleton crate: `tpt-teleop-hal`
-- [x] Create skeleton crate: `tpt-teleop-cloud`
-- [x] Create skeleton crate: `tpt-teleop-sec`
-- [x] Create skeleton crate: `tpt-teleop-analytics`
-- [x] Create skeleton crate: `tpt-teleop-cli`
+- [x] Create skeleton crate: `tpt-t-core`
+- [x] Create skeleton crate: `tpt-t-ring`
+- [x] Create skeleton crate: `tpt-t-link`
+- [x] Create skeleton crate: `tpt-t-input`
+- [x] Create skeleton crate: `tpt-t-media`
+- [x] Create skeleton crate: `tpt-t-safety`
+- [x] Create skeleton crate: `tpt-t-hal`
+- [x] Create skeleton crate: `tpt-t-cloud`
+- [x] Create skeleton crate: `tpt-t-sec`
+- [x] Create skeleton crate: `tpt-t-analytics`
+- [x] Create skeleton crate: `tpt-t-cli`
 - [x] Add `LICENSE-MIT` (TPT Solutions)
 - [x] Add `LICENSE-APACHE` (TPT Solutions)
 - [x] Set `license = "MIT OR Apache-2.0"` in workspace/crate `Cargo.toml` metadata
@@ -35,7 +35,7 @@ Goal: repo, licensing, and CI exist before any feature code is written.
 - [x] Write root `README.md` (project overview, license badges)
 - [x] Write architecture doc stub (crate map, data-flow diagram from spec Â§6)
 
-## Phase 1 — Lock-Free Core (tpt-teleop-ring, tpt-teleop-core skeleton)
+## Phase 1 — Lock-Free Core (tpt-t-ring, tpt-t-core skeleton)
 
 Goal: the zero-copy SPSC ring buffer and central state machine exist and are benchmarked.
 
@@ -45,16 +45,16 @@ Goal: the zero-copy SPSC ring buffer and central state machine exist and are ben
 - [x] Implement zero-copy struct-casting utilities (byte slice â†” struct)
 - [x] Write unit tests for ring buffer correctness (single/multi producer-consumer pairs)
 - [x] Write throughput/latency benchmarks for ring buffer
-- [x] Implement central state machine skeleton in `tpt-teleop-core`
+- [x] Implement central state machine skeleton in `tpt-t-core`
 - [x] Define Auto / Assist / Full-Teleop mode enum and state transitions
-- [x] Implement custom lock-free message bus in `tpt-teleop-core`
+- [x] Implement custom lock-free message bus in `tpt-t-core`
 
-## Phase 2 — Cross-Platform Runtime (tpt-teleop-core)
+## Phase 2 — Cross-Platform Runtime (tpt-t-core)
 
 Goal: a custom, no-async-runtime event loop with thread-per-core pinning on every target OS.
 
 - [x] Define event-loop abstraction trait (platform-agnostic)
-- [x] Implement Linux backend: `io_uring` event loop *(shipped as the custom epoll loop spec §3.1 explicitly permits; io_uring zero-copy transmit lands in tpt-teleop-link, Phase 7)*
+- [x] Implement Linux backend: `io_uring` event loop *(shipped as the custom epoll loop spec §3.1 explicitly permits; io_uring zero-copy transmit lands in tpt-t-link, Phase 7)*
 - [x] Implement macOS/BSD backend: `kqueue` event loop
 - [x] Implement Windows backend: custom IOCP event loop
 - [x] Implement thread-per-core pinning: Linux (`sched_setaffinity`)
@@ -73,35 +73,35 @@ Goal: rkyv-based structs and helpers used by every subsystem downstream.
 - [x] Implement zero-copy deserialize helper (byte slice â†’ struct cast)
 - [x] Implement pre-allocated serialization buffer pool
 
-## Phase 4 — Mock Hardware / Simulator (tpt-teleop-hal sim backend)
+## Phase 4 — Mock Hardware / Simulator (tpt-t-hal sim backend)
 
 Goal: full control loop can be built/tested with zero real hardware.
 
 - [x] Define HAL trait(s) covering motors, sensors, CAN bus, cameras
-- [x] Integrate `rapier` physics simulation *(superseded: rapier ships Apache-2.0-only, banned by the §2 cargo-deny MIT chain — replaced by a deterministic in-house rigid-body core in tpt-teleop-hal::sim::world; swap-in remains possible behind the same fixture API if policy changes)*
+- [x] Integrate `rapier` physics simulation *(superseded: rapier ships Apache-2.0-only, banned by the §2 cargo-deny MIT chain — replaced by a deterministic in-house rigid-body core in tpt-t-hal::sim::world; swap-in remains possible behind the same fixture API if policy changes)*
 - [x] Implement mock CAN bus backend
 - [x] Implement mock motor backend
 - [x] Implement mock sensor backend
 - [x] Build simulated robot/drone fixture for end-to-end integration tests
 
-## Phase 5 — Safety & Autonomy Handover (tpt-teleop-safety)
+## Phase 5 — Safety & Autonomy Handover (tpt-t-safety)
 
 Goal: deterministic safety loop intercepts and modifies commands in <10Âµs.
 
-- [ ] Implement dedicated RT thread (Linux `SCHED_FIFO`)
-- [ ] Implement equivalent RT/high-priority thread on macOS
-- [ ] Implement equivalent RT/high-priority thread on Windows
-- [ ] Implement geofencing logic
-- [ ] Implement predictive collision avoidance (kinematic limit enforcement)
-- [ ] Implement cubic-spline smoothed transitions between Auto/Assist/Teleop
-- [ ] Implement latency compensation
-- [ ] Implement emergency override intercept path
-- [ ] Implement override/veto arbitration: clamp/restrict a human-authored `ControlCommand` when an AI input source is also present on the unit, without the AI ever injecting new intent (see spec.txt §5.4 Shared Control)
-- [ ] Wire safety loop to pop from input ring, mutate in place, push to output ring
-- [ ] Build <10Âµs intercept latency benchmark/test harness
-- [ ] End-to-end test against Phase 4 simulator
+- [x] Implement dedicated RT thread (Linux `SCHED_FIFO`)
+- [x] Implement equivalent RT/high-priority thread on macOS
+- [x] Implement equivalent RT/high-priority thread on Windows
+- [x] Implement geofencing logic
+- [x] Implement predictive collision avoidance (kinematic limit enforcement)
+- [x] Implement cubic-spline smoothed transitions between Auto/Assist/Teleop
+- [x] Implement latency compensation
+- [x] Implement emergency override intercept path
+- [x] Implement override/veto arbitration: clamp/restrict a human-authored `ControlCommand` when an AI input source is also present on the unit, without the AI ever injecting new intent (see spec.txt §5.4 Shared Control)
+- [x] Wire safety loop to pop from input ring, mutate in place, push to output ring
+- [x] Build <10Âµs intercept latency benchmark/test harness
+- [x] End-to-end test against Phase 4 simulator
 
-## Phase 6 — Input (tpt-teleop-input)
+## Phase 6 — Input (tpt-t-input)
 
 Goal: controller/VR input flows zero-copy into the ring buffer pipeline.
 
@@ -117,7 +117,7 @@ Goal: controller/VR input flows zero-copy into the ring buffer pipeline.
 - [ ] Wire input subsystem: HID report â†’ zero-copy cast â†’ ring buffer â†’ safety loop
 - [ ] End-to-end test against Phase 4 simulator
 
-## Phase 7 — Networking & Transport (tpt-teleop-link)
+## Phase 7 — Networking & Transport (tpt-t-link)
 
 Goal: control/telemetry/WebRTC traffic multiplexed over a single UDP port with QUIC fallback.
 
@@ -131,7 +131,7 @@ Goal: control/telemetry/WebRTC traffic multiplexed over a single UDP port with Q
 - [ ] Wire rkyv serialization directly into pre-allocated UDP packet buffers
 - [ ] End-to-end test: safety loop output â†’ link serialize â†’ transmit
 
-## Phase 8 — Media & Telemetry (tpt-teleop-media)
+## Phase 8 — Media & Telemetry (tpt-t-media)
 
 Goal: zero-copy camera ingestion through hardware encoding with telemetry overlay.
 
@@ -145,7 +145,7 @@ Goal: zero-copy camera ingestion through hardware encoding with telemetry overla
 - [ ] Implement telemetry burn-in onto video frame pre-encode
 - [ ] Wire encoder bitrate adjustment to Phase 7 network backpressure signal
 
-## Phase 9 — HAL Completion (tpt-teleop-hal real backends)
+## Phase 9 — HAL Completion (tpt-t-hal real backends)
 
 Goal: real hardware backends implemented behind the Phase 4 HAL trait.
 
@@ -156,7 +156,7 @@ Goal: real hardware backends implemented behind the Phase 4 HAL trait.
 - [ ] Implement direct memory-mapped I/O for CAN bus and serial
 - [ ] Validate real backends are drop-in swappable with Phase 4 mock backends
 
-## Phase 10 — Cloud & Multi-Tenancy (tpt-teleop-cloud)
+## Phase 10 — Cloud & Multi-Tenancy (tpt-t-cloud)
 
 Goal: fleet management server and WebRTC SFU with no hyper/axum/tokio.
 
@@ -168,18 +168,18 @@ Goal: fleet management server and WebRTC SFU with no hyper/axum/tokio.
 - [ ] Implement multi-unit/session orchestration: many concurrent DTI sessions, one per unit
 - [ ] Implement MCP server exposing fleet dispatch tools (list units, assign unit, engage autonomy, take manual control) (see spec.txt §5.6 AI & Fleet Dispatch)
 
-## Phase 11 — Security & Compliance (tpt-teleop-sec)
+## Phase 11 — Security & Compliance (tpt-t-sec)
 
 Goal: E2EE and zero-trust access control across link/cloud traffic.
 
 - [ ] Integrate `ring` for AES-256-GCM
 - [ ] Integrate `ring` for ChaCha20-Poly1305
-- [ ] Implement zero-copy decrypt directly into `tpt-teleop-ring` buffer
+- [ ] Implement zero-copy decrypt directly into `tpt-t-ring` buffer
 - [ ] Implement zero-trust security model
 - [ ] Implement RBAC (role-based access control)
-- [ ] Integrate `tpt-teleop-sec` with `tpt-teleop-link` and `tpt-teleop-cloud`
+- [ ] Integrate `tpt-t-sec` with `tpt-t-link` and `tpt-t-cloud`
 
-## Phase 12 — Analytics & AI Export (tpt-teleop-analytics)
+## Phase 12 — Analytics & AI Export (tpt-t-analytics)
 
 Goal: FDR logging never blocks the control loop; data is exportable for AI training.
 
@@ -199,9 +199,9 @@ Goal: ergonomic macro-driven setup and project scaffolding tooling.
 - [ ] Macro codegen: generate lock-free rings from struct fields
 - [ ] Macro codegen: generate thread-pinning setup from macro args
 - [ ] Macro codegen: generate zero-copy serialization boilerplate
-- [ ] Implement `tpt-teleop-cli` project scaffolding command
-- [ ] Implement `tpt-teleop-cli` cargo-deny config generator
-- [ ] Implement `tpt-teleop-cli` CPU core-pinning profile setup command
+- [ ] Implement `tpt-t-cli` project scaffolding command
+- [ ] Implement `tpt-t-cli` cargo-deny config generator
+- [ ] Implement `tpt-t-cli` CPU core-pinning profile setup command
 
 ## Phase 14 — Integration, Benchmarking & Release
 

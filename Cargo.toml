@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 authors = ["TPT Solutions"]
 repository = "https://github.com/tpt-solutions/tpt-teleop"
 homepage = "https://tpt.solutions/tpt-teleop"
-documentation = "https://docs.rs/tpt-teleop-core"
+documentation = "https://docs.rs/tpt-t-core"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
@@ -20,16 +20,16 @@ undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
 # Internal crates
-tpt-teleop-core = { path = "crates/tpt-teleop-core" }
-tpt-teleop-ring = { path = "crates/tpt-teleop-ring" }
-tpt-teleop-hal = { path = "crates/tpt-teleop-hal" }
-tpt-teleop-safety = { path = "crates/tpt-teleop-safety" }
-tpt-teleop-input = { path = "crates/tpt-teleop-input" }
-tpt-teleop-media = { path = "crates/tpt-teleop-media" }
-tpt-teleop-link = { path = "crates/tpt-teleop-link" }
-tpt-teleop-cloud = { path = "crates/tpt-teleop-cloud" }
-tpt-teleop-sec = { path = "crates/tpt-teleop-sec" }
-tpt-teleop-analytics = { path = "crates/tpt-teleop-analytics" }
+tpt-t-core = { path = "crates/tpt-t-core" }
+tpt-t-ring = { path = "crates/tpt-t-ring" }
+tpt-t-hal = { path = "crates/tpt-t-hal" }
+tpt-t-safety = { path = "crates/tpt-t-safety" }
+tpt-t-input = { path = "crates/tpt-t-input" }
+tpt-t-media = { path = "crates/tpt-t-media" }
+tpt-t-link = { path = "crates/tpt-t-link" }
+tpt-t-cloud = { path = "crates/tpt-t-cloud" }
+tpt-t-sec = { path = "crates/tpt-t-sec" }
+tpt-t-analytics = { path = "crates/tpt-t-analytics" }
 
 # Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
 # Members gate these behind [target.'cfg(...)'.dependencies] as needed;

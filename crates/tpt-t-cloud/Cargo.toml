@@ -1,0 +1,15 @@
+[package]
+name = "tpt-t-cloud"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Minimal HTTP/3 fleet server and WebRTC SFU on quinn + socket2 (tpt-teleop)"
+
+[dependencies]
+tpt-t-core = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+[package]
+name = "tpt-t-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Project scaffolding, cargo-deny config generation, and CPU core-pinning profile setup (tpt-teleop)"
+
+[[bin]]
+name = "tpt-t-cli"
+path = "src/main.rs"
+
+[dependencies]
+tpt-t-core = { workspace = true }
+
+[lints]
+workspace = true
