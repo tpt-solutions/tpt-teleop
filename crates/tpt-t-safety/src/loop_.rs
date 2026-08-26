@@ -80,6 +80,9 @@ pub struct SafetyLoop {
     estop_latched: bool,
     dropped_out: u64,
     veto: VetoGate,
+    prev_z: f64,
+    have_prev_z: bool,
+    vz_est: f64,
 }
 
 // SAFETY: all shared state is atomic/ring-mediated; the pose snapshot is
@@ -108,14 +111,27 @@ impl SafetyLoop {
             pose: Pose6D::default(),
             estop_latched: false,
             dropped_out: 0,
+            prev_z: 0.0,
+            have_prev_z: false,
+            vz_est: 0.0,
             veto: VetoGate::default(),
             cfg,
         }
     }
 
-    /// Feeds the freshest vehicle pose (odometry/GPS fusion).
+    /// Feeds the freshest vehicle pose (odometry/GPS fusion). Called once per
+    /// tick, this also maintains the vertical-speed estimate used by the
+    /// predictive ceiling guard.
     #[inline]
     pub fn set_pose(&mut self, pose: &Pose6D) {
+        if self.have_prev_z {
+            let dt_s = self.cfg.tick_period_us as f64 / 1e6;
+            if dt_s > 0.0 {
+                self.vz_est = (pose.z - self.prev_z) / dt_s;
+            }
+        }
+        self.prev_z = pose.z;
+        self.have_prev_z = true;
         self.pose = *pose;
     }
 
@@ -232,6 +248,18 @@ impl SafetyLoop {
 
         // 2b) Shared-control AI veto: restrict-only, never injects intent.
         let _ = self.veto.apply(&mut cmd);
+
+        // 2c) Predictive vertical brake: start shedding climb *before* the
+        // ceiling, using braking distance v²/(2a) from the measured climb
+        // rate (spec §5.4 predictive avoidance). Hover-neutral throttle
+        // yields ~2 m/s² of downward authority on typical frames.
+        const CEILING_BRAKE_M_S2: f64 = 2.0;
+        let stop_dist = self.vz_est * self.vz_est / (2.0 * CEILING_BRAKE_M_S2);
+        if self.pose.z + stop_dist >= self.cfg.fence.max_alt_m
+            && cmd.axes[3] > crate::geo::THROTTLE_NEUTRAL
+        {
+            cmd.axes[3] = crate::geo::THROTTLE_NEUTRAL;
+        }
         // 3) Geofence projection (soft attenuate / hard suppress).
         let verdict = self.cfg.fence.evaluate(&self.pose);
         if verdict != FenceVerdict::Inside {

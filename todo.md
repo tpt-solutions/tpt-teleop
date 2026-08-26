@@ -4,7 +4,7 @@ Tracks all work derived from `spec.txt`, ordered by build dependency/risk
 (not spec section order). Simulation-first: Phase 4 builds a mock hardware
 backend so Phases 5–8 can be built and tested before real hardware (Phase 9)
 is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
-> **Status (2026-08-26):** Phases 0-5 complete and validated — `cargo test` green on the Windows host; `cargo clippy -D warnings` clean on Windows, x86_64-linux-gnu and aarch64-apple-darwin targets; `cargo fmt --check` clean. See docs/ARCHITECTURE.md for the implemented design.
+> **Status (2026-08-26):** Phases 0-5 complete and validated — `cargo test` green (workspace); `cargo clippy -D warnings` clean on Windows, x86_64-linux-gnu and aarch64-apple-darwin targets; `cargo fmt --check` clean. See docs/ARCHITECTURE.md for the implemented design.
 
 
 ## Phase 0 — Foundation & Tooling
@@ -193,9 +193,9 @@ Goal: FDR logging never blocks the control loop; data is exportable for AI train
 
 Goal: ergonomic macro-driven setup and project scaffolding tooling.
 
-- [ ] Implement `#[tpt_teleop::robot(thread_per_core = true)]` proc-macro
-- [ ] Implement `#[tpt_teleop::camera(...)]` field attribute macro
-- [ ] Implement `#[tpt_teleop::motor(...)]` field attribute macro
+- [ ] Implement `#[tpt_t::robot(thread_per_core = true)]` proc-macro
+- [ ] Implement `#[tpt_t::camera(...)]` field attribute macro
+- [ ] Implement `#[tpt_t::motor(...)]` field attribute macro
 - [ ] Macro codegen: generate lock-free rings from struct fields
 - [ ] Macro codegen: generate thread-pinning setup from macro args
 - [ ] Macro codegen: generate zero-copy serialization boilerplate

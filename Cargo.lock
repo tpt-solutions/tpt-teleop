@@ -341,7 +341,9 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "tpt-t-core",
+ "tpt-t-hal",
  "tpt-t-ring",
+ "tpt-t-safety",
  "windows-sys",
 ]
 

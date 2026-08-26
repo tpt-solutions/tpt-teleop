@@ -1,0 +1,59 @@
+warning: unused import: `tpt_t_core::Mode`
+ --> crates\tpt-t-input\src\map.rs:4:5
+  |
+4 | use tpt_t_core::Mode;
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tpt-t-input` (lib) generated 1 warning (run `cargo fix --lib -p tpt-t-input` to apply 1 suggestion)
+   Compiling tpt-t-input v0.1.0 (C:\Programming\2 WIP\tpt-teleop\crates\tpt-t-input)
+warning: unused import: `tpt_t_input::slot`
+   --> crates\tpt-t-input\tests\e2e_input.rs:182:9
+    |
+182 |     use tpt_t_input::slot;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `tpt-t-input` (test "e2e_input") generated 1 warning (run `cargo fix --test "e2e_input" -p tpt-t-input` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.45s
+     Running unittests src\lib.rs (target\debug\deps\tpt_t_input-fe9d3a27987e71e9.exe)
+
+running 7 tests
+test map::tests::deadzone_collapses_jitter_and_rescales_edge ... ok
+test map::tests::default_map_routes_semantic_slots ... ok
+test win_hid::tests::vid_pid_extracted_from_path_tokens ... ok
+test win_hid::tests::invalid_handle_rejected_at_construction ... ok
+test win_hid::tests::poll_on_bogus_handle_is_idle_not_panic ... ok
+test map::tests::invert_flags_negate_channels ... ok
+test map::tests::throttle_remapped_to_unit_interval ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\e2e_input.rs (target\debug\deps\e2e_input-3ec7117445542d0b.exe)
+
+running 6 tests
+test copilot_primary_wins_then_co_pilot_takes_over_after_expiry ... ok
+test haptic_router_fans_out_to_every_sink ... ok
+test evdev_chunk_of_many_records_parses_in_order ... ok
+test no_live_operator_yields_none ... ok
+test evdev_records_decode_and_normalize ... ok
+test hid_through_safety_loop_flies_sim_inside_envelope ... FAILED
+
+failures:
+
+---- hid_through_safety_loop_flies_sim_inside_envelope stdout ----
+
+thread 'hid_through_safety_loop_flies_sim_inside_envelope' (497916) panicked at crates\tpt-t-input\tests\e2e_input.rs:260:5:
+ceiling breach: 23.83021033014881
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    hid_through_safety_loop_flies_sim_inside_envelope
+
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p tpt-t-input --test e2e_input`
+DONE=0  

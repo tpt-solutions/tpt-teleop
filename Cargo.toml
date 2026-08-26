@@ -42,6 +42,8 @@ windows-sys = { version = "0.60", features = [
     "Win32_System_IO",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
+    "Win32_Storage_FileSystem",
+    "Win32_Devices_HumanInterfaceDevice",
 ] }
 
 [profile.release]

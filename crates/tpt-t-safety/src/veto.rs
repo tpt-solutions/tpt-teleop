@@ -30,6 +30,8 @@ pub struct VetoGate {
 // SAFETY: plain atomic flag + boxed-float bits; no cross-field invariants
 // require synchronization beyond Relaxed/Acquire-Release used here.
 unsafe impl Send for VetoGate {}
+// SAFETY: &VetoGate exposes only the two atomics; apply() reads the cap and
+// clamps caller-owned data, sharing no mutable non-atomic state.
 unsafe impl Sync for VetoGate {}
 
 impl VetoGate {
