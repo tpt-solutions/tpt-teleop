@@ -7,8 +7,8 @@ use core::fmt;
 pub enum SecError {
     /// Symmetric key had the wrong length for the chosen AEAD.
     InvalidKeyLength,
-    /// A primitive AEAD / signature / agreement operation failed
-    /// (`ring::error::Unspecified` — opaque by policy).
+    /// A primitive AEAD / signature / agreement / KDF operation failed
+    /// (opaque error by policy).
     Crypto,
     /// Key generation could not be seeded.
     KeyGen,
@@ -45,14 +45,8 @@ impl fmt::Display for SecError {
 
 impl std::error::Error for SecError {}
 
-impl From<ring::error::Unspecified> for SecError {
-    fn from(_: ring::error::Unspecified) -> Self {
+impl From<hkdf::InvalidLength> for SecError {
+    fn from(_: hkdf::InvalidLength) -> Self {
         SecError::Crypto
-    }
-}
-
-impl From<ring::error::KeyRejected> for SecError {
-    fn from(_: ring::error::KeyRejected) -> Self {
-        SecError::InvalidKeyLength
     }
 }

@@ -59,7 +59,9 @@ fn codegen_emits_rings_ser_and_roles() {
     };
 
     // thread_per_core was set to false in the attribute.
-    const { assert!(!Bot::THREAD_PER_CORE); }
+    const {
+        assert!(!Bot::THREAD_PER_CORE);
+    }
     // One role per wired device, in declaration order.
     assert_eq!(Bot::roles().len(), 2);
 

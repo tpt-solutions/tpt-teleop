@@ -38,11 +38,14 @@ impl SocketCan {
             CString::new(iface).map_err(|_| HalError::Device("interface name not C-string"))?;
         // SAFETY: if_nametoindex reads the NUL-terminated name, returns an
         // index (0 on unknown interface).
+        // SAFETY: if_nametoindex reads the NUL-terminated CString `name`.
         let ifindex = unsafe { libc::if_nametoindex(name.as_ptr()) };
         if ifindex == 0 {
+            // SAFETY: fd is a freshly-created, unbound socket; close is safe.
             unsafe { libc::close(fd) };
             return Err(HalError::Device("unknown CAN interface"));
         }
+        // SAFETY: a zeroed sockaddr_can is valid; we set family/ifindex below.
         let mut addr: libc::sockaddr_can = unsafe { std::mem::zeroed() };
         addr.can_family = AF_CAN as u16;
         addr.can_ifindex = ifindex as c_int;
@@ -55,10 +58,11 @@ impl SocketCan {
             )
         };
         if ret < 0 {
+            // SAFETY: fd valid; closing on bind failure is safe.
             unsafe { libc::close(fd) };
             return Err(HalError::Device("bind(AF_CAN) failed"));
         }
-        // SAFETY: fcntl F_GETFL/F_SETFL with a valid fd; O_NONBLOCK added.
+        // SAFETY: fd valid; F_GETFL/F_SETFL with O_NONBLOCK are safe.
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
         unsafe { libc::fcntl(fd, libc::F_SETFL, flags | O_NONBLOCK) };
         Ok(Self { fd })
@@ -100,6 +104,7 @@ impl CanBus for SocketCan {
     }
 
     fn recv(&mut self, out: &mut CanFrame) -> bool {
+        // SAFETY: zeroed can_frame is a valid, zeroed receive buffer.
         let mut cf: libc::can_frame = unsafe { std::mem::zeroed() };
         // SAFETY: recv(2) into a stack can_frame.
         let n = unsafe {
@@ -123,6 +128,7 @@ impl CanBus for SocketCan {
 
 impl Drop for SocketCan {
     fn drop(&mut self) {
+        // SAFETY: fd is a valid open socket for the lifetime of `self`.
         unsafe { libc::close(self.fd) };
     }
 }

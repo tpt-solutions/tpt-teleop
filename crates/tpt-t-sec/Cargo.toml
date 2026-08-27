@@ -6,16 +6,23 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Zero-trust security model, RBAC, E2EE via ring AES-GCM / ChaCha20-Poly1305 (tpt-teleop)"
+description = "Zero-trust security model, RBAC, E2EE via RustCrypto AES-GCM / ChaCha20-Poly1305 (tpt-teleop)"
 
 [dependencies]
 tpt-t-core = { workspace = true }
 tpt-t-ring = { workspace = true }
 tpt-t-link = { workspace = true }
 tpt-t-cloud = { workspace = true }
-# ISC-licensed (MIT-chain compatible per spec §2). `cc` build-dep is clarified
-# to MIT in deny.toml.
-ring = "0.17"
+# All dual MIT OR Apache-2.0 (→ MIT under the §2 MIT-chain policy) unless noted.
+# Pure-Rust: no C/`cc` build step, simpler cross-compilation than `ring`.
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+aead = "0.5"
+hkdf = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+ed25519-dalek = "2"
 
 [dev-dependencies]
 tpt-t-core = { workspace = true }

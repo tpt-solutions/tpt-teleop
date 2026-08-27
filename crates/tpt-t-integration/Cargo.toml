@@ -1,0 +1,27 @@
+[package]
+name = "tpt-t-integration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "End-to-end pipeline integration, zero-alloc/zero-lock verification tooling, and cross-subsystem benchmark suite (tpt-teleop Phase 14)"
+
+[dependencies]
+tpt-t-core = { workspace = true }
+tpt-t-ring = { workspace = true }
+tpt-t-hal = { workspace = true }
+tpt-t-safety = { workspace = true }
+tpt-t-input = { workspace = true }
+tpt-t-link = { workspace = true }
+
+[dev-dependencies]
+tpt-t-macros = { workspace = true }
+
+[[bench]]
+name = "pipeline_bench"
+harness = false
+
+[lints]
+workspace = true

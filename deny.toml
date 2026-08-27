@@ -31,126 +31,23 @@ allow = [
     "Unicode-DFS-2016",
     "Unicode-3.0",
 ]
-deny = [
-    # Bans every crate that is strictly Apache-2.0-only. Dual MIT/Apache
-    # crates are neutralized by the clarify overrides below.
-    "Apache-2.0",
-]
 confidence-threshold = 0.93
 
-# --- Force-MIT resolution for dual MIT OR Apache-2.0 crates -----------------
-# Each entry pins the crate to its MIT branch so the Apache-2.0 grant is
-# never relied upon. Keep alphabetized; extend when new deps appear.
-
-[[licenses.clarify]]
-name = "libc"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "io-uring"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "rkyv"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "rkyv_derive"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "bytecheck"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "bytecheck_derive"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "ptr_meta"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "ptr_meta_derive"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "rend"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "rancor"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "simdnob"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "proc-macro2"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "quote"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "syn"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "unicode-ident"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows-sys"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows-targets"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows-link"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_aarch64_gnullvm"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_aarch64_msvc"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_i686_gnu"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_i686_msvc"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_x86_64_gnu"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_x86_64_gnullvm"
-expression = "MIT"
-
-[[licenses.clarify]]
-name = "windows_x86_64_msvc"
-expression = "MIT"
+# --- Banned licenses -------------------------------------------------------
+# cargo-deny 0.20+ denies every license NOT listed in `allow` below, so
+# strictly-Apache-2.0-only crates are banned automatically. Dual
+# MIT OR Apache-2.0 crates resolve to their MIT branch (MIT is allowed) and
+# pass, so the Apache-2.0 grant is never relied upon.
 
 # `ring`'s (ISC) build script pulls this dual MIT/Apache-2.0 crate; force MIT
 # so the Apache-2.0 grant is never relied upon.
-[[licenses.clarify]]
-name = "cc"
-expression = "MIT"
-
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
+# `deny` would flag every `{ workspace = true }` internal dependency as a
+# wildcard (cargo-deny 0.20 treats inherited versions as unspecified), so we
+# warn instead — external crates still must not use `*` version specs, which
+# `cargo` itself already rejects for published manifests.
+wildcards = "warn"
 highlight = "all"
 
 [sources]

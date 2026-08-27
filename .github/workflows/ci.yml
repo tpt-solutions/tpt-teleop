@@ -43,3 +43,16 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Check (${{ matrix.target }})
         run: cargo check --workspace --all-targets --target ${{ matrix.target }}
+
+  integration:
+    # Phase 14, item 4: full cross-platform integration suite against the Phase
+    # 4 simulator, plus the zero-lock hot-path audit.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Integration suite (Phase 14)
+        run: cargo test -p tpt-t-integration
+      - name: Zero-lock hot-path audit
+        run: bash tools/lock-audit.sh

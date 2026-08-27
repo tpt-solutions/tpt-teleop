@@ -9,9 +9,13 @@ thread-per-core pinning, and raw OS interfaces all the way down.
 
 ## Status
 
-🚧 **Under active development** — see [`todo.md`](todo.md) for the full roadmap
-and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the crate map and
-zero-copy data-flow design.
+🔧 **Phase 14 — Integration, Benchmarking & Release** in progress. All
+feature phases (0–13) are implemented, `cargo test`/`clippy`/`fmt` are clean
+across the workspace, and the MIT-chain dependency audit passes. Phase 14 adds
+the full end-to-end pipeline test, allocation/lock verification tooling, the
+cross-subsystem benchmark suite, and the final release audit. See
+[`todo.md`](todo.md) for the live checklist and
+[`docs/quickstart.md`](docs/quickstart.md) for the macro-driven quick start.
 
 | CI | Lint | Deps |
 |----|------|------|
@@ -32,17 +36,29 @@ zero-copy data-flow design.
 | `tpt-t-sec` | Zero-trust access control, E2EE via `ring`, RBAC |
 | `tpt-t-analytics` | O_DIRECT flight data recorder, AI training export |
 | `tpt-t-cli` | Project scaffolding, cargo-deny config, core-pinning profiles |
+| `tpt-t-integration` | Phase 14: full-pipeline E2E, zero-alloc/zero-lock verification, benchmarks |
 
 ## The Zero-Copy Data Path
 
 ```
-HID report ──cast──▶ ControlCommand ──▶ [ring] ──▶ safety loop (in-place)
-                                                        │
-                                              [ring] ──▶ rkyv serialize ──▶ UDP
-Total allocations: 0        Total mutex locks: 0
+HID report ──Ingest──▶ Normalize ──Route──▶ Safety loop (in-place)
+                                                       │
+                                              Serialize ──▶ Transmit ──▶ wire
+Total allocations (steady state): 0        Total mutex locks: 0
 ```
 
-See `spec.txt` §6 for the authoritative description.
+The forward data plane is verified end-to-end in `tpt-t-integration`
+(`Ingest → Normalize → Route → Safety → Serialize → Transmit`) and proven to
+make no per-command heap allocations and take no locks on the hot path; see
+[`tools/lock-audit.sh`](tools/lock-audit.sh) and the `zero_alloc` test.
+
+## Developer Experience
+
+`#[derive(tpt_t::Robot)]` turns a plain struct of device fields into a
+lock-free, core-pinned robot: one `SpscRing` per `#[camera]`/`#[motor]` field,
+a `launch()` that pins each device to its `CoreProfile` role, and
+`serialize_*`/`push_*`/`pop_*` zero-copy wrappers. See
+[`docs/quickstart.md`](docs/quickstart.md).
 
 ## Licensing
 

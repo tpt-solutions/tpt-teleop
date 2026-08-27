@@ -7,8 +7,8 @@
 //! anchor) before deriving any shared secret — this is the zero-trust "never
 //! trust, always verify" check that binds a session to a known identity.
 
-use ring::rand::SystemRandom;
-use ring::signature::{self, Ed25519KeyPair, KeyPair};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use getrandom::getrandom;
 
 use crate::error::SecError;
 use crate::rbac::Role;
@@ -65,24 +65,24 @@ impl Attestation {
         eph_pub: &[u8; AGREEMENT_PUB_LEN],
     ) -> Result<Self, SecError> {
         let msg = Self::signed_message(identity.unit_id, identity.role, eph_pub);
-        let sig = identity.signing.sign(&msg);
-        let mut s = [0u8; SIGNATURE_LEN];
-        s.copy_from_slice(sig.as_ref());
+        let sig: [u8; SIGNATURE_LEN] = identity.signing.sign(&msg).to_bytes();
         Ok(Self {
             unit_id: identity.unit_id,
             role: identity.role,
             signing_pub: identity.signing_pub,
             eph_pub: *eph_pub,
-            sig: s,
+            sig,
         })
     }
 
     /// Verifies the signature against the embedded signing public key.
     pub fn verify(&self) -> bool {
         let msg = Self::signed_message(self.unit_id, self.role, &self.eph_pub);
-        let peer_key =
-            signature::UnparsedPublicKey::new(&signature::ED25519, &self.signing_pub[..]);
-        peer_key.verify(&msg, &self.sig[..]).is_ok()
+        let Ok(peer_key) = VerifyingKey::from_bytes(&self.signing_pub) else {
+            return false;
+        };
+        let sig = Signature::from_bytes(&self.sig);
+        peer_key.verify(&msg, &sig).is_ok()
     }
 }
 
@@ -92,7 +92,7 @@ impl Attestation {
 pub struct DeviceIdentity {
     unit_id: u64,
     role: Role,
-    signing: Ed25519KeyPair,
+    signing: SigningKey,
     signing_pub: [u8; SIGNING_PUB_LEN],
 }
 
@@ -109,12 +109,12 @@ impl std::fmt::Debug for DeviceIdentity {
 impl DeviceIdentity {
     /// Generates a fresh identity with the given unit id and role.
     pub fn generate(unit_id: u64, role: Role) -> Result<Self, SecError> {
-        let rng = SystemRandom::new();
-        let doc = Ed25519KeyPair::generate_pkcs8(&rng).map_err(|_| SecError::KeyGen)?;
-        let signing = Ed25519KeyPair::from_pkcs8(doc.as_ref()).map_err(|_| SecError::KeyGen)?;
-        let pub_doc = signing.public_key();
+        let mut seed = [0u8; 32];
+        getrandom(&mut seed).map_err(|_| SecError::KeyGen)?;
+        let signing = SigningKey::from(seed);
+        let pub_doc = signing.verifying_key();
         let mut signing_pub = [0u8; SIGNING_PUB_LEN];
-        signing_pub.copy_from_slice(pub_doc.as_ref());
+        signing_pub.copy_from_slice(pub_doc.as_bytes());
         Ok(Self {
             unit_id,
             role,
@@ -140,16 +140,16 @@ impl DeviceIdentity {
 
     /// Signs an arbitrary message (returns 64 raw signature bytes).
     pub fn sign_message(&self, msg: &[u8]) -> [u8; SIGNATURE_LEN] {
-        let sig = self.signing.sign(msg);
-        let mut s = [0u8; SIGNATURE_LEN];
-        s.copy_from_slice(sig.as_ref());
-        s
+        self.signing.sign(msg).to_bytes()
     }
 
     /// Verifies a signature made by this identity's public key.
     pub fn verify_message(&self, msg: &[u8], sig: &[u8; SIGNATURE_LEN]) -> bool {
-        let key = signature::UnparsedPublicKey::new(&signature::ED25519, &self.signing_pub[..]);
-        key.verify(msg, sig).is_ok()
+        let Ok(key) = VerifyingKey::from_bytes(&self.signing_pub) else {
+            return false;
+        };
+        let sig = Signature::from_bytes(sig);
+        key.verify(msg, &sig).is_ok()
     }
 }
 

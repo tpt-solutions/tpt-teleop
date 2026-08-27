@@ -14,9 +14,10 @@
 //! (perfect forward secrecy). Because the ephemeral keys are signed, an
 //! attacker cannot mount a man-in-the-middle without a trusted signing key.
 
-use ring::agreement::{self, EphemeralPrivateKey, UnparsedPublicKey, X25519};
-use ring::hkdf;
-use ring::rand::SystemRandom;
+use getrandom::getrandom;
+use hkdf::Hkdf;
+use sha2::Sha256;
+use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::cipher::{CipherSuite, CryptoBox};
 use crate::error::SecError;
@@ -44,7 +45,7 @@ pub struct HandshakeResp {
 /// Opaque initiator-side handshake state holding the ephemeral agreement key
 /// (consumed when the responder's reply arrives).
 pub struct PendingHandshake {
-    eph: EphemeralPrivateKey,
+    eph: StaticSecret,
 }
 
 /// A mutually-authenticated, encrypted session between two units.
@@ -112,34 +113,27 @@ impl SecureSession {
 /// HKDF info binding derived keys to this protocol version.
 const HKDF_INFO: &[u8] = b"tpt-teleop-sec-v1";
 
-fn generate_eph() -> Result<(EphemeralPrivateKey, [u8; 32]), SecError> {
-    let rng = SystemRandom::new();
-    let eph = EphemeralPrivateKey::generate(&X25519, &rng).map_err(|_| SecError::KeyGen)?;
-    let pub_key = eph.compute_public_key().map_err(|_| SecError::KeyGen)?;
-    let mut pub_bytes = [0u8; 32];
-    pub_bytes.copy_from_slice(pub_key.as_ref());
+fn generate_eph() -> Result<(StaticSecret, [u8; 32]), SecError> {
+    let mut seed = [0u8; 32];
+    getrandom(&mut seed).map_err(|_| SecError::KeyGen)?;
+    let eph = StaticSecret::from(seed);
+    let pub_bytes = PublicKey::from(&eph).to_bytes();
     Ok((eph, pub_bytes))
 }
 
-fn derive_shared(our_eph: EphemeralPrivateKey, peer_pub: &[u8; 32]) -> Result<[u8; 32], SecError> {
-    let peer = UnparsedPublicKey::new(&X25519, &peer_pub[..]);
-    agreement::agree_ephemeral(our_eph, &peer, |shared| {
-        let mut s = [0u8; 32];
-        s.copy_from_slice(shared);
-        s
-    })
-    .map_err(|_| SecError::Crypto)
+fn derive_shared(our_eph: StaticSecret, peer_pub: &[u8; 32]) -> Result<[u8; 32], SecError> {
+    let peer = PublicKey::from(*peer_pub);
+    let shared = our_eph.diffie_hellman(&peer);
+    let mut s = [0u8; 32];
+    s.copy_from_slice(shared.as_bytes());
+    Ok(s)
 }
 
 fn derive_key(shared: &[u8; 32], suite: CipherSuite) -> CryptoBox {
-    let salt = hkdf::Salt::new(hkdf::HKDF_SHA256, &[]);
-    let prk = salt.extract(shared);
-    let okm = prk
-        .expand(&[HKDF_INFO], hkdf::HKDF_SHA256)
-        .expect("32-byte HKDF expansion is always valid");
+    let h = Hkdf::<Sha256>::new(None, shared);
     let mut key = [0u8; 32];
-    okm.fill(&mut key)
-        .expect("fill into 32 bytes always succeeds");
+    h.expand(HKDF_INFO, &mut key)
+        .expect("32-byte HKDF expansion is always valid");
     CryptoBox::from_kdf(suite, &key)
 }
 

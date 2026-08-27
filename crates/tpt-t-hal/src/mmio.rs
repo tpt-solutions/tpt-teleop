@@ -59,6 +59,8 @@ pub struct LinuxMmio {
 }
 
 #[cfg(target_os = "linux")]
+// SAFETY: the mapped region is only touched through the `Mmio` methods, which
+// always bounds-check `offset`, and the pointer does not escape `self`.
 unsafe impl Send for LinuxMmio {}
 
 #[cfg(target_os = "linux")]

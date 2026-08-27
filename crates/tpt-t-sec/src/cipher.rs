@@ -1,6 +1,10 @@
-//! AEAD wrappers over `ring` (spec §5.5): AES-256-GCM and ChaCha20-Poly1305,
-//! with zero-copy seal/open paths that decrypt directly into a
-//! [`tpt_t_ring`] slot.
+//! AEAD wrappers over RustCrypto (spec §5.5): AES-256-GCM and
+//! ChaCha20-Poly1305, with zero-copy seal/open paths that decrypt directly
+//! into a [`tpt_t_ring`] slot.
+//!
+//! RustCrypto is dual `MIT OR Apache-2.0` (resolves to MIT under the §2
+//! MIT-chain policy) and pure-Rust, replacing the Apache-2.0 `ring` crate that
+//! previously backed this module.
 //!
 //! The wire envelope produced by every seal is:
 //!
@@ -16,15 +20,19 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use ring::aead;
-use ring::rand::{SecureRandom, SystemRandom};
+use aead::generic_array::GenericArray;
+use aead::generic_array::typenum::U12;
+use aead::{AeadInPlace, KeyInit};
+use aes_gcm::Aes256Gcm;
+use chacha20poly1305::ChaCha20Poly1305;
+use getrandom::getrandom;
 
 use crate::error::SecError;
 
 /// AEAD nonce length (both suites are 96-bit NONCE).
-pub const NONCE_LEN: usize = aead::NONCE_LEN;
+pub const NONCE_LEN: usize = 12;
 /// AEAD authentication tag length (both suites are 128-bit).
-pub const TAG_LEN: usize = aead::MAX_TAG_LEN;
+pub const TAG_LEN: usize = 16;
 
 /// Negotiable AEAD cipher suite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,15 +44,6 @@ pub enum CipherSuite {
 }
 
 impl CipherSuite {
-    /// The `ring` algorithm backing this suite.
-    #[inline]
-    fn algorithm(&self) -> &'static aead::Algorithm {
-        match self {
-            CipherSuite::Aes256Gcm => &aead::AES_256_GCM,
-            CipherSuite::ChaCha20Poly1305 => &aead::CHACHA20_POLY1305,
-        }
-    }
-
     /// Maximum per-message overhead (nonce + tag) in bytes.
     #[inline]
     pub fn overhead(&self) -> usize {
@@ -63,6 +62,25 @@ impl CipherSuite {
     }
 }
 
+/// Builds the suite-specific RustCrypto cipher from raw key bytes.
+fn build_inner(suite: CipherSuite, key: &[u8]) -> Result<Inner, SecError> {
+    match suite {
+        CipherSuite::Aes256Gcm => Ok(Inner::Aes(Box::new(
+            Aes256Gcm::new_from_slice(key).map_err(|_| SecError::InvalidKeyLength)?,
+        ))),
+        CipherSuite::ChaCha20Poly1305 => Ok(Inner::Cha(
+            ChaCha20Poly1305::new_from_slice(key).map_err(|_| SecError::InvalidKeyLength)?,
+        )),
+    }
+}
+
+/// The runtime-selected AEAD primitive (chosen once at construction, never on
+/// the hot path, so no per-command heap allocation or dynamic dispatch).
+enum Inner {
+    Aes(Box<Aes256Gcm>),
+    Cha(ChaCha20Poly1305),
+}
+
 /// A symmetric session box: a single key, a chosen suite, and a monotonic
 /// nonce counter (96-bit = 64-bit counter ‖ 32-bit random salt) so the same
 /// key never encrypts two messages under the same nonce.
@@ -71,7 +89,7 @@ impl CipherSuite {
 /// exactly like `NetService`), and the nonce counter is the only shared
 /// mutable state — an atomic, lock-free.
 pub struct CryptoBox {
-    key: aead::LessSafeKey,
+    key: Inner,
     suite: CipherSuite,
     ctr: AtomicU64,
     salt: [u8; 4],
@@ -81,12 +99,11 @@ impl CryptoBox {
     /// Builds a box from exactly the right number of raw key bytes
     /// (32 for either suite).
     pub fn new(suite: CipherSuite, key: &[u8]) -> Result<Self, SecError> {
-        let unbound = aead::UnboundKey::new(suite.algorithm(), key)?;
-        let rng = SystemRandom::new();
+        let key = build_inner(suite, key)?;
         let mut salt = [0u8; 4];
-        rng.fill(&mut salt).map_err(|_| SecError::KeyGen)?;
+        getrandom(&mut salt).map_err(|_| SecError::KeyGen)?;
         Ok(Self {
-            key: aead::LessSafeKey::new(unbound),
+            key,
             suite,
             ctr: AtomicU64::new(0),
             salt,
@@ -96,14 +113,12 @@ impl CryptoBox {
     /// Derives a box from any 32-byte slice already produced by a KDF.
     #[inline]
     pub fn from_kdf(suite: CipherSuite, kdf: &[u8; 32]) -> Self {
-        // UnboundKey::new only fails on length, and 32 is always valid here.
-        let unbound = aead::UnboundKey::new(suite.algorithm(), kdf)
-            .expect("32-byte key is valid for either suite");
-        let rng = SystemRandom::new();
+        // new_from_slice only fails on length, and 32 is always valid here.
+        let key = build_inner(suite, kdf).expect("32-byte key is valid for either suite");
         let mut salt = [0u8; 4];
-        let _ = rng.fill(&mut salt);
+        let _ = getrandom(&mut salt);
         Self {
-            key: aead::LessSafeKey::new(unbound),
+            key,
             suite,
             ctr: AtomicU64::new(0),
             salt,
@@ -156,16 +171,17 @@ impl CryptoBox {
         self.next_nonce(&mut nonce);
         out[..NONCE_LEN].copy_from_slice(&nonce);
         out[NONCE_LEN..NONCE_LEN + plaintext.len()].copy_from_slice(plaintext);
-        let n = aead::Nonce::try_assume_unique_for_key(&nonce)?;
-        // Seal in place over the ciphertext‖tag region using the separate-tag
-        // form so a caller-owned `out` (not a growable Vec) can be used —
-        // this keeps the seal path allocation-free on the hot path.
-        let tag = self.key.seal_in_place_separate_tag(
-            n,
-            aead::Aad::from(aad),
-            &mut out[NONCE_LEN..NONCE_LEN + plaintext.len()],
-        )?;
-        out[NONCE_LEN + plaintext.len()..need].copy_from_slice(tag.as_ref());
+        let n = GenericArray::<u8, U12>::from_slice(&nonce);
+        let ct = &mut out[NONCE_LEN..NONCE_LEN + plaintext.len()];
+        let tag = match &self.key {
+            Inner::Aes(c) => c
+                .encrypt_in_place_detached(n, aad, ct)
+                .map_err(|_| SecError::Crypto)?,
+            Inner::Cha(c) => c
+                .encrypt_in_place_detached(n, aad, ct)
+                .map_err(|_| SecError::Crypto)?,
+        };
+        out[NONCE_LEN + plaintext.len()..need].copy_from_slice(&tag);
         Ok(need)
     }
 
@@ -198,11 +214,20 @@ impl CryptoBox {
         if buf.len() < NONCE_LEN + TAG_LEN {
             return Err(SecError::Crypto);
         }
-        let nonce = aead::Nonce::try_assume_unique_for_key(&buf[..NONCE_LEN])?;
-        let pt = self
-            .key
-            .open_in_place(nonce, aead::Aad::from(aad), &mut buf[NONCE_LEN..])?;
-        let pt_len = pt.len();
+        let pt_len = buf.len() - NONCE_LEN - TAG_LEN;
+        let mut nonce_bytes = [0u8; NONCE_LEN];
+        nonce_bytes.copy_from_slice(&buf[..NONCE_LEN]);
+        let nonce = GenericArray::<u8, U12>::from_slice(&nonce_bytes);
+        let (ct, tag) = buf[NONCE_LEN..].split_at_mut(pt_len);
+        let tag_ref: &[u8] = &*tag;
+        match &self.key {
+            Inner::Aes(c) => c
+                .decrypt_in_place_detached(nonce, aad, ct, tag_ref.into())
+                .map_err(|_| SecError::Crypto)?,
+            Inner::Cha(c) => c
+                .decrypt_in_place_detached(nonce, aad, ct, tag_ref.into())
+                .map_err(|_| SecError::Crypto)?,
+        }
         // Slide plaintext to the front so the whole block is contiguous and
         // ready to be pushed into an SpscRing slot.
         buf.copy_within(NONCE_LEN..NONCE_LEN + pt_len, 0);
