@@ -15,8 +15,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tpt_t_core::mode::{Mode, TransitionTable};
-use tpt_t_core::ser::ControlCommand;
+use tpt_t_core::ser::{AlignedBuf, ControlCommand, serialize_into};
 use tpt_t_ring::SpscRing;
+
+use tpt_t_sec::cipher::{CipherSuite, CryptoBox};
+use tpt_t_sec::link::AAD_CONTROL;
+use tpt_t_link::mux::secure_inner;
 
 use crate::error::{CloudError, transport_err};
 use crate::json::Json;
@@ -86,6 +90,64 @@ impl UnitTransport for UdpTransport {
         let now = crate::now_unix_ns();
         self.mux
             .send_framed(addr, &self.scratch[..n], now)
+            .map(|_| ())
+    }
+}
+
+/// Encrypted command transport: wraps the Phase 7 multiplexer and seals every
+/// [`ControlCommand`] under a per-peer [`CryptoBox`] on the `Channel::Secure`
+/// channel (spec §5.5). A default box covers peers without a bootstrapped
+/// session; per-unit sessions established via the secure handshake endpoint
+/// are registered with [`SecureUdpTransport::add_peer_session`].
+pub struct SecureUdpTransport {
+    mux: tpt_t_link::mux::UdpMux,
+    peers: HashMap<SocketAddr, CryptoBox>,
+    default: CryptoBox,
+    scratch: Box<[u8; tpt_t_link::mux::MAX_DATAGRAM]>,
+}
+
+impl SecureUdpTransport {
+    /// Binds an ephemeral UDP socket and builds the transport with a default
+    /// (pre-shared) key. `key` must be exactly 32 bytes for either suite.
+    pub fn bind(default_key: &[u8; 32], suite: CipherSuite) -> io::Result<Self> {
+        let default = CryptoBox::from_kdf(suite, default_key)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        Ok(Self {
+            mux: tpt_t_link::mux::UdpMux::bind_loopback()?,
+            peers: HashMap::new(),
+            default,
+            scratch: Box::new([0u8; tpt_t_link::mux::MAX_DATAGRAM]),
+        })
+    }
+
+    /// Registers an established secure session for `addr` (overrides the
+    /// default box for that peer).
+    pub fn add_peer_session(&mut self, addr: SocketAddr, box_: CryptoBox) {
+        self.peers.insert(addr, box_);
+    }
+
+    /// Removes a peer's secure session (falls back to the default box).
+    pub fn remove_peer_session(&mut self, addr: SocketAddr) {
+        self.peers.remove(&addr);
+    }
+}
+
+impl UnitTransport for SecureUdpTransport {
+    fn send_command(&mut self, addr: SocketAddr, cmd: &ControlCommand) -> io::Result<()> {
+        let box_ = self.peers.get(&addr).unwrap_or(&self.default);
+        let mut scratch = AlignedBuf::new();
+        let n = serialize_into(cmd, &mut scratch)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let sealed = box_
+            .seal_to_vec(&scratch[..n], AAD_CONTROL)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let framed = self
+            .mux
+            .write_secure_frame(&sealed, secure_inner::CONTROL, &mut self.scratch)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        let now = crate::now_unix_ns();
+        self.mux
+            .send_framed(addr, &self.scratch[..framed], now)
             .map(|_| ())
     }
 }

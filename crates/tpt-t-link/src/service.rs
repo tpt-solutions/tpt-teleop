@@ -95,8 +95,10 @@ pub enum Event {
     NeighborUp(u64, SocketAddr),
     /// An E2EE envelope (sealed bytes) for the security layer to open
     /// (`tpt-t-sec`). Delivered verbatim; zero-copy decrypt lands in the
-    /// consumer's ring buffer via the crypto helpers.
-    Secure(Vec<u8>, SocketAddr),
+    /// consumer's ring buffer via the crypto helpers. `inner` is the
+    /// [`secure_inner`](crate::mux::secure_inner) channel tag selecting the
+    /// AEAD AAD domain.
+    Secure(Vec<u8>, SocketAddr, u8),
 }
 
 impl core::fmt::Debug for Event {
@@ -125,9 +127,10 @@ impl core::fmt::Debug for Event {
             Event::NeighborUp(id, addr) => {
                 f.debug_tuple("NeighborUp").field(id).field(addr).finish()
             }
-            Event::Secure(b, from) => f
+            Event::Secure(b, from, inner) => f
                 .debug_struct("Secure")
                 .field("len", &b.len())
+                .field("inner", &inner)
                 .field("from", from)
                 .finish(),
         }
@@ -446,6 +449,23 @@ impl ServiceCore {
         self.transmit(dst, &frame[..n], now).map(|_| ())
     }
 
+    /// Transmits a pre-sealed E2EE envelope (`sealed` = nonce‖ciphertext‖tag)
+    /// on the `Channel::Secure` channel. `inner` is the
+    /// [`secure_inner`](crate::mux::secure_inner) tag selecting the receiver's
+    /// AEAD AAD domain (control vs telemetry).
+    pub fn send_secure(
+        &mut self,
+        sealed: &[u8],
+        inner: u8,
+        dst: SocketAddr,
+    ) -> io::Result<()> {
+        let now = self.now_ns();
+        let n = self.mux.write_secure_frame(sealed, inner, &mut self.tx)?;
+        let mut frame = [0u8; MAX_DATAGRAM];
+        frame[..n].copy_from_slice(&self.tx[..n]);
+        self.transmit(dst, &frame[..n], now).map(|_| ())
+    }
+
     /// Emits one beacon round to every configured peer plus all known
     /// neighbors (swarm membership propagates from any seed).
     pub fn beacon_fanout(&mut self) {
@@ -516,7 +536,7 @@ impl Session<'_> {
                 Ice(Vec<u8>, SocketAddr),
                 Beacon(MeshBeacon, SocketAddr),
                 Ack(crate::reliable::AckFrame),
-                Secure(Vec<u8>, SocketAddr),
+                Secure(Vec<u8>, SocketAddr, u8),
             }
             let frame = match self.core.mux.recv_frame(&mut self.core.rx) {
                 Ok(Some(Ok(inbound))) => match inbound {
@@ -538,7 +558,9 @@ impl Session<'_> {
                     ),
                     Inbound::Ice { payload, from } => Frame::Ice(payload.to_vec(), from),
                     Inbound::Mesh { beacon, from } => Frame::Beacon(beacon, from),
-                    Inbound::Secure { sealed, from } => Frame::Secure(sealed.to_vec(), from),
+                    Inbound::Secure { sealed, from, inner } => {
+                        Frame::Secure(sealed.to_vec(), from, inner)
+                    }
                     Inbound::Ack { ack, .. } => Frame::Ack(ack),
                 },
                 Ok(Some(Err(e))) => {
@@ -576,7 +598,7 @@ impl Session<'_> {
                 }
                 Frame::Tlm(pkt, from) => Some(Event::Telemetry(pkt, from)),
                 Frame::Ice(bytes, from) => Some(Event::Ice(bytes, from)),
-                Frame::Secure(sealed, from) => Some(Event::Secure(sealed, from)),
+                Frame::Secure(sealed, from, inner) => Some(Event::Secure(sealed, from, inner)),
                 Frame::Beacon(beacon, src) => {
                     // Reply address comes from the beacon payload
                     // (authoritative listen port), not the datagram source.
@@ -585,7 +607,7 @@ impl Session<'_> {
                     if self
                         .core
                         .mesh
-                        .observe(beacon.unit_id, peer, beacon.seq, now)
+                        .observe(beacon.unit_id, peer, beacon.seq, beacon.ts_ns, now)
                     {
                         // Answer once so the newcomer learns us without
                         // waiting for its next heartbeat round.

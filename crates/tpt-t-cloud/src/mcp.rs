@@ -10,6 +10,9 @@
 //! over the HTTP `/mcp` endpoint ([`crate::server`]), stdio, or any other
 //! byte channel.
 
+use tpt_t_sec::FleetAuthz;
+use tpt_t_sec::rbac::Principal;
+
 use crate::fleet::Fleet;
 use crate::json::Json;
 
@@ -24,7 +27,15 @@ impl McpServer {
     }
 
     /// Handles one JSON-RPC 2.0 request object, mutating `fleet` as needed.
-    pub fn handle(&self, req: &Json, fleet: &mut Fleet) -> Json {
+    /// When `auth` is `Some((gate, principal))`, every `tools/call` is checked
+    /// against the zero-trust gate before it runs (missing/unauthorized → a
+    /// JSON-RPC error, mirroring the HTTP 401/403 contract).
+    pub fn handle(
+        &self,
+        req: &Json,
+        fleet: &mut Fleet,
+        auth: Option<(&FleetAuthz, Principal)>,
+    ) -> Json {
         let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let id = req.get("id").cloned().unwrap_or(Json::Null);
         let params = req.get("params").cloned().unwrap_or(Json::Null);
@@ -75,13 +86,26 @@ impl McpServer {
             "tools/call" => {
                 let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let args = params.get("arguments").cloned().unwrap_or(Json::Null);
-                self.call_tool(name, &args, fleet, id)
+                self.call_tool(name, &args, fleet, id, auth)
             }
             _ => json_rpc_err(id, -32601, format!("method not found: {method}")),
         }
     }
 
-    fn call_tool(&self, name: &str, args: &Json, fleet: &mut Fleet, id: Json) -> Json {
+    fn call_tool(
+        &self,
+        name: &str,
+        args: &Json,
+        fleet: &mut Fleet,
+        id: Json,
+        auth: Option<(&FleetAuthz, Principal)>,
+    ) -> Json {
+        // Zero-trust: reject privileged tool calls without a sufficient grant.
+        if let Some((gate, principal)) = auth {
+            if !gate.authorize_dispatch(&principal, name) {
+                return json_rpc_err(id, -32003, "insufficient attestation for this tool".into());
+            }
+        }
         match name {
             "list_units" => {
                 let units: Vec<Json> = fleet.list_units().iter().map(|u| u.to_json()).collect();
@@ -217,7 +241,7 @@ mod tests {
     fn initialize_handshake() {
         let srv = McpServer::new();
         let mut fleet = Fleet::new(Box::new(NullTransport));
-        let r = srv.handle(&init_req(), &mut fleet);
+        let r = srv.handle(&init_req(), &mut fleet, None);
         assert_eq!(r.get("jsonrpc").and_then(|v| v.as_str()), Some("2.0"));
         assert!(r.get("result").is_some());
     }
@@ -231,7 +255,7 @@ mod tests {
             ("id", Json::num(2.0)),
             ("method", Json::str("tools/list")),
         ]);
-        let r = srv.handle(&req, &mut fleet);
+        let r = srv.handle(&req, &mut fleet, None);
         let tools = r.get("result").and_then(|x| x.get("tools")).unwrap();
         if let Json::Arr(items) = tools {
             assert_eq!(items.len(), 4);
@@ -259,7 +283,7 @@ mod tests {
                 ]),
             ),
         ]);
-        let r = srv.handle(&req, &mut fleet);
+        let r = srv.handle(&req, &mut fleet, None);
         assert!(r.get("error").is_none(), "got error: {r:?}");
         let units = r.get("result").and_then(|x| x.get("units")).unwrap();
         if let Json::Arr(items) = units {
@@ -288,7 +312,7 @@ mod tests {
                 ]),
             ),
         ]);
-        let r = srv.handle(&req, &mut fleet);
+        let r = srv.handle(&req, &mut fleet, None);
         assert!(r.get("error").is_none(), "got error: {r:?}");
         assert_eq!(fleet.get(1).unwrap().mode, tpt_t_core::mode::Mode::Auto);
     }
@@ -302,7 +326,7 @@ mod tests {
             ("id", Json::num(5.0)),
             ("method", Json::str("bogus")),
         ]);
-        let r = srv.handle(&req, &mut fleet);
+        let r = srv.handle(&req, &mut fleet, None);
         assert!(r.get("error").is_some());
     }
 }

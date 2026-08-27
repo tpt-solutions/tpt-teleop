@@ -110,6 +110,16 @@ pub mod flags {
     pub const RELIABLE: u8 = 0b0000_0010;
 }
 
+/// Inner-channel tag for [`Channel::Secure`] frames: tells the receiver which
+/// AEAD AAD domain to use when opening the envelope (so control vs telemetry
+/// stay cryptographically separated). Stored in the frame's `flags` byte.
+pub mod secure_inner {
+    /// Control payload (AAD domain `tpt-sec-control`).
+    pub const CONTROL: u8 = 1;
+    /// Telemetry payload (AAD domain `tpt-sec-telemetry`).
+    pub const TELEMETRY: u8 = 2;
+}
+
 /// Atomic link counters (network thread writes; readers are lock-free).
 #[derive(Debug, Default)]
 pub struct LinkStats {
@@ -185,6 +195,10 @@ pub enum Inbound<'a> {
         sealed: &'a [u8],
         /// Sender address.
         from: SocketAddr,
+        /// Inner channel tag carried in the frame's `flags` byte so the
+        /// receiver can select the matching AEAD AAD domain (control vs
+        /// telemetry) when opening the envelope.
+        inner: u8,
     },
 }
 
@@ -450,10 +464,13 @@ impl UdpMux {
 
     /// Assembles an E2EE envelope datagram: `sealed` (the `tpt-t-sec` AEAD
     /// output: nonce‖ciphertext‖tag) is forwarded verbatim for the security
-    /// layer to open on the peer. Rejected if it exceeds the MTU.
+    /// layer to open on the peer. `frame_flags` carries the inner-channel tag
+    /// (e.g. `INNER_CONTROL` / `INNER_TELEMETRY`) so the receiver can select
+    /// the matching AEAD AAD domain. Rejected if it exceeds the MTU.
     pub fn write_secure_frame(
         &mut self,
         sealed: &[u8],
+        frame_flags: u8,
         out: &mut [u8; MAX_DATAGRAM],
     ) -> io::Result<usize> {
         if sealed.len() > MAX_PAYLOAD {
@@ -463,7 +480,7 @@ impl UdpMux {
             ));
         }
         out[HEADER_LEN..HEADER_LEN + sealed.len()].copy_from_slice(sealed);
-        Self::write_header(out, Channel::Secure, 0, sealed.len() as u16);
+        Self::write_header(out, Channel::Secure, frame_flags, sealed.len() as u16);
         Ok(Self::finish_frame(out, HEADER_LEN + sealed.len()))
     }
 
@@ -635,6 +652,7 @@ impl UdpMux {
             Some(Channel::Secure) => Ok(Inbound::Secure {
                 sealed: payload,
                 from,
+                inner: buf[9],
             }),
             // Media demux lands with Phase 8; unknown channels are
             // protocol-version skew — drop loudly via counters.

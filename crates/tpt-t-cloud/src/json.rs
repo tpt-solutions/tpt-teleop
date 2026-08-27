@@ -113,6 +113,15 @@ impl Json {
         }
     }
 
+    /// Borrow the inner array, if this is one.
+    pub fn as_array(&self) -> Option<&[Json]> {
+        if let Json::Arr(items) = self {
+            Some(items)
+        } else {
+            None
+        }
+    }
+
     /// Serializes to a compact JSON string.
     pub fn write_to_string(&self) -> String {
         let mut out = String::new();

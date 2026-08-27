@@ -117,6 +117,29 @@ pub struct NeighborEntry {
     pub last_seen_ns: u64,
     /// Sequence of the last accepted beacon (wrap-safe ordering).
     pub last_seq: u32,
+    /// Monotonic ns of the last accepted *address* change (flap rate-limit).
+    pub last_flap_ns: u64,
+}
+
+/// Neighbor-table admission policy (spec §5.2 hardening).
+#[derive(Debug, Clone, Copy)]
+pub struct MeshConfig {
+    /// Maximum tolerated difference between a beacon's timestamp and local
+    /// time; beacons further off are rejected as implausible (clock-skew /
+    /// replay protection).
+    pub max_clock_skew_ns: u64,
+    /// Minimum spacing between accepted address changes for the same unit;
+    /// changes that arrive sooner are treated as flapping and ignored.
+    pub flap_cooldown_ns: u64,
+}
+
+impl Default for MeshConfig {
+    fn default() -> Self {
+        Self {
+            max_clock_skew_ns: 30_000_000_000, // 30 s
+            flap_cooldown_ns: 2_000_000_000,   // 2 s
+        }
+    }
 }
 
 /// Fixed-capacity open-addressed neighbor table (default 128 slots).
@@ -127,6 +150,7 @@ pub struct NeighborEntry {
 pub struct NeighborTable {
     slots: Box<[Option<NeighborEntry>]>,
     len: usize,
+    cfg: MeshConfig,
 }
 
 impl Default for NeighborTable {
@@ -138,9 +162,15 @@ impl Default for NeighborTable {
 impl NeighborTable {
     /// Creates a table with `capacity` slots (rounded up to ≥ 1).
     pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_config(capacity, MeshConfig::default())
+    }
+
+    /// Creates a table with `capacity` slots and a custom admission policy.
+    pub fn with_config(capacity: usize, cfg: MeshConfig) -> Self {
         Self {
             slots: (0..capacity.max(1)).map(|_| None).collect(),
             len: 0,
+            cfg,
         }
     }
 
@@ -163,21 +193,48 @@ impl NeighborTable {
 
     /// Records a beacon from `unit_id`. Returns `true` when this is a *new*
     /// or *advanced* observation worth replying to; stale replays from the
-    /// same address return `false`.
-    pub fn observe(&mut self, unit_id: u64, addr: SocketAddr, seq: u32, now_ns: u64) -> bool {
+    /// same address return `false`. Beacons with an implausible timestamp are
+    /// dropped, and too-frequent address changes (flapping) are rate-limited.
+    pub fn observe(
+        &mut self,
+        unit_id: u64,
+        addr: SocketAddr,
+        seq: u32,
+        beacon_ts_ns: u64,
+        now_ns: u64,
+    ) -> bool {
+        // Clock-skew / replay guard: a beacon far ahead of or behind local
+        // time cannot be trusted.
+        let skew = beacon_ts_ns.abs_diff(now_ns);
+        if skew > self.cfg.max_clock_skew_ns {
+            return false;
+        }
         let cap = self.slots.len();
         let mut idx = Self::probe_start(unit_id) % cap;
         for _ in 0..cap {
             match &mut self.slots[idx] {
                 Some(e) if e.unit_id == unit_id => {
-                    // Wrap-safe advance test: (seq - last_seq) as i32 > 0.
                     let advanced = seq.wrapping_sub(e.last_seq) as i32 > 0;
-                    if advanced || e.addr != addr {
+                    let addr_changed = e.addr != addr;
+                    if addr_changed {
+                        // Rate-limit flapping: ignore address changes that
+                        // arrive before the cooldown elapses (keep the old
+                        // address so a flapping attacker can't hijack routing).
+                        if now_ns.saturating_sub(e.last_flap_ns) < self.cfg.flap_cooldown_ns {
+                            e.last_seen_ns = now_ns;
+                            return false;
+                        }
                         e.addr = addr;
+                        e.last_flap_ns = now_ns;
                         e.last_seen_ns = now_ns;
                         if advanced {
                             e.last_seq = seq;
                         }
+                        return true;
+                    }
+                    if advanced {
+                        e.last_seq = seq;
+                        e.last_seen_ns = now_ns;
                         return true;
                     }
                     e.last_seen_ns = now_ns;
@@ -189,6 +246,7 @@ impl NeighborTable {
                         addr,
                         last_seen_ns: now_ns,
                         last_seq: seq,
+                        last_flap_ns: now_ns,
                     });
                     self.len += 1;
                     return true;
@@ -269,32 +327,40 @@ mod tests {
 
     #[test]
     fn observe_inserts_updates_and_rejects_stale_sequences() {
-        let mut t = NeighborTable::with_capacity(8);
+        // Zero flap cooldown preserves the legacy "address change is an event"
+        // semantics; dedicated tests below exercise the cooldown.
+        let mut t = NeighborTable::with_config(
+            8,
+            MeshConfig {
+                max_clock_skew_ns: 30_000_000_000,
+                flap_cooldown_ns: 0,
+            },
+        );
         assert!(t.is_empty());
 
         // New neighbor.
-        assert!(t.observe(42, addr(1000), 1, 100));
+        assert!(t.observe(42, addr(1000), 1, 100, 100));
         assert_eq!(t.len(), 1);
         assert_eq!(t.find(42).unwrap().last_seq, 1);
 
         // Same-seq replay from same address: refresh only, no advance.
-        assert!(!t.observe(42, addr(1000), 1, 200));
+        assert!(!t.observe(42, addr(1000), 1, 200, 200));
         assert_eq!(t.find(42).unwrap().last_seen_ns, 200);
 
         // Advanced seq updates.
-        assert!(t.observe(42, addr(1000), 2, 300));
+        assert!(t.observe(42, addr(1000), 2, 300, 300));
         assert_eq!(t.find(42).unwrap().last_seq, 2);
 
         // Stale (older) seq ignored.
-        assert!(!t.observe(42, addr(1000), 1, 400));
+        assert!(!t.observe(42, addr(1000), 1, 400, 400));
         assert_eq!(t.find(42).unwrap().last_seq, 2);
 
         // Address change counts as an event (unit moved ports).
-        assert!(t.observe(42, addr(2000), 2, 500));
+        assert!(t.observe(42, addr(2000), 2, 500, 500));
         assert_eq!(t.find(42).unwrap().addr.port(), 2000);
 
         // Second unit lands independently.
-        assert!(t.observe(7, addr(3000), 9, 600));
+        assert!(t.observe(7, addr(3000), 9, 600, 600));
         assert_eq!(t.len(), 2);
         let mut ids: Vec<_> = t.iter().map(|e| e.unit_id).collect();
         ids.sort_unstable();
@@ -304,22 +370,22 @@ mod tests {
     #[test]
     fn sequence_ordering_is_wrap_safe() {
         let mut t = NeighborTable::with_capacity(4);
-        t.observe(1, addr(1), u32::MAX - 2, 0);
+        t.observe(1, addr(1), u32::MAX - 2, 0, 0);
         // +1 across the wrap boundary must count as an advance.
-        assert!(t.observe(1, addr(1), u32::MAX - 1, 1));
-        assert!(t.observe(1, addr(1), u32::MAX, 2));
-        assert!(t.observe(1, addr(1), 0, 3));
-        assert!(t.observe(1, addr(1), 1, 4));
+        assert!(t.observe(1, addr(1), u32::MAX - 1, 1, 1));
+        assert!(t.observe(1, addr(1), u32::MAX, 2, 2));
+        assert!(t.observe(1, addr(1), 0, 3, 3));
+        assert!(t.observe(1, addr(1), 1, 4, 4));
         // A jump far backwards (old seq) does not.
-        assert!(!t.observe(1, addr(1), u32::MAX - 2, 5));
+        assert!(!t.observe(1, addr(1), u32::MAX - 2, 5, 5));
         assert_eq!(t.find(1).unwrap().last_seq, 1);
     }
 
     #[test]
     fn expire_removes_only_silent_neighbors() {
         let mut t = NeighborTable::default();
-        t.observe(1, addr(10), 1, 1_000);
-        t.observe(2, addr(20), 1, 5_000);
+        t.observe(1, addr(10), 1, 1_000, 1_000);
+        t.observe(2, addr(20), 1, 5_000, 5_000);
 
         assert_eq!(t.expire(6_000, 4_000), 1, "unit 1 silent 5s > 4s ttl");
         assert!(t.find(1).is_none());
@@ -332,11 +398,41 @@ mod tests {
     #[test]
     fn full_table_degrades_without_corruption() {
         let mut t = NeighborTable::with_capacity(2);
-        assert!(t.observe(1, addr(1), 1, 0));
-        assert!(t.observe(2, addr(2), 1, 0));
-        assert!(!t.observe(3, addr(3), 1, 0), "no slot available");
+        assert!(t.observe(1, addr(1), 1, 0, 0));
+        assert!(t.observe(2, addr(2), 1, 0, 0));
+        assert!(!t.observe(3, addr(3), 1, 0, 0), "no slot available");
         assert_eq!(t.len(), 2);
         // Existing entries still resolve.
         assert_eq!(t.find(2).unwrap().addr.port(), 2);
+    }
+
+    #[test]
+    fn implausible_timestamp_is_rejected() {
+        let mut t = NeighborTable::with_capacity(8);
+        // Beacon timestamp wildly ahead of local time (> 30s skew) is dropped.
+        assert!(!t.observe(1, addr(10), 1, 100_000_000_000, 1_000));
+        // Beacon timestamp wildly behind local time is dropped.
+        assert!(!t.observe(2, addr(20), 1, 1_000, 100_000_000_000));
+        assert!(t.is_empty());
+        // A believable, in-skew beacon is accepted.
+        assert!(t.observe(3, addr(30), 1, 1_000, 1_000));
+        assert_eq!(t.len(), 1);
+    }
+
+    #[test]
+    fn address_flapping_is_rate_limited() {
+        let mut t = NeighborTable::with_capacity(8);
+        let cfg = MeshConfig {
+            max_clock_skew_ns: 30_000_000_000,
+            flap_cooldown_ns: 2_000_000_000,
+        };
+        let mut t = NeighborTable::with_config(8, cfg);
+        assert!(t.observe(1, addr(100), 1, 1_000, 1_000));
+        // Immediate flap to a new address is suppressed (kept on port 100).
+        assert!(!t.observe(1, addr(200), 1, 1_100, 1_100));
+        assert_eq!(t.find(1).unwrap().addr.port(), 100);
+        // After the cooldown elapses, the address change is accepted.
+        assert!(t.observe(1, addr(200), 1, 3_100_000_000, 3_100_000_000));
+        assert_eq!(t.find(1).unwrap().addr.port(), 200);
     }
 }

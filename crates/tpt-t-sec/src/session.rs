@@ -129,7 +129,7 @@ fn derive_shared(our_eph: StaticSecret, peer_pub: &[u8; 32]) -> Result<[u8; 32],
     Ok(s)
 }
 
-fn derive_key(shared: &[u8; 32], suite: CipherSuite) -> CryptoBox {
+fn derive_key(shared: &[u8; 32], suite: CipherSuite) -> Result<CryptoBox, SecError> {
     let h = Hkdf::<Sha256>::new(None, shared);
     let mut key = [0u8; 32];
     h.expand(HKDF_INFO, &mut key)
@@ -168,7 +168,7 @@ pub fn respond_handshake(
     let shared = derive_shared(eph, &init.attestation.eph_pub)?;
     let suite = CipherSuite::negotiate(our_suites, &init.suites)
         .ok_or(SecError::Handshake("no common cipher suite"))?;
-    let crypto = derive_key(&shared, suite);
+    let crypto = derive_key(&shared, suite)?;
     let attestation = Attestation::sign(identity, &eph_pub)?;
     let session = SecureSession {
         peer_id: init.attestation.unit_id,
@@ -189,7 +189,7 @@ pub fn finish_handshake(
         return Err(SecError::AttestationFailed);
     }
     let shared = derive_shared(pending.eph, &resp.attestation.eph_pub)?;
-    let crypto = derive_key(&shared, resp.suite);
+    let crypto = derive_key(&shared, resp.suite)?;
     Ok(SecureSession {
         peer_id: resp.attestation.unit_id,
         peer_role: resp.attestation.role,

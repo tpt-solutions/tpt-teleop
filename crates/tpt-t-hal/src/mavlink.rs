@@ -148,6 +148,14 @@ pub fn parse_frame(buf: &[u8]) -> Result<MavFrame, MavError> {
         _ => return Err(MavError::Magic),
     };
 
+    // Need at least the payload-length byte (both versions), plus the
+    // incompat-flags byte for v2 (read below to detect the signature bit),
+    // before any further indexing.
+    let min_header = if version == 1 { 2 } else { 3 };
+    if buf.len() < min_header {
+        return Err(MavError::Truncated);
+    }
+
     let (payload_len, header_after) = if version == 1 {
         (buf[1] as usize, 5usize)
     } else {
@@ -436,5 +444,17 @@ mod tests {
         let mut short = make_heartbeat(0);
         short.truncate(short.len() - 1);
         assert_eq!(parse_frame(&short), Err(MavError::Truncated));
+    }
+
+    #[test]
+    fn truncated_one_and_two_byte_buffers_do_not_panic() {
+        assert_eq!(
+            parse_frame(&[MAVLINK_1_MAGIC]),
+            Err(MavError::Truncated)
+        );
+        assert_eq!(
+            parse_frame(&[MAVLINK_2_MAGIC, 0x05]),
+            Err(MavError::Truncated)
+        );
     }
 }

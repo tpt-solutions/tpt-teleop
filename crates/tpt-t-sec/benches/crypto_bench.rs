@@ -19,8 +19,8 @@ fn main() {
     for (i, b) in key.iter_mut().enumerate() {
         *b = (i as u8).wrapping_mul(7).wrapping_add(3);
     }
-    let box_a = CryptoBox::from_kdf(CipherSuite::Aes256Gcm, &key);
-    let box_b = CryptoBox::from_kdf(CipherSuite::Aes256Gcm, &key);
+    let box_a = CryptoBox::from_kdf(CipherSuite::Aes256Gcm, &key).unwrap();
+    let box_b = CryptoBox::from_kdf(CipherSuite::Aes256Gcm, &key).unwrap();
     let pt = b"take manual control now";
 
     let mut sealed = vec![0u8; 12 + pt.len() + 16];

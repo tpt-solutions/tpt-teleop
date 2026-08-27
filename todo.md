@@ -274,3 +274,48 @@ Goal: verified end-to-end, zero-allocation, zero-lock data path; ready to tag v1
 - [x] Write documentation pass + macro-driven quick-start guide
 - [x] Final license/cargo-deny audit before release
 - [x] Tag v1.0.0 release
+
+## Phase 15 — Security Hardening & Bug Fixes
+
+Goal: wire the already-built `tpt-t-sec` crypto/RBAC stack into the live
+`tpt-t-cloud`/`tpt-t-link` runtime paths (currently unauthenticated/unencrypted
+in production), and fix the real bugs found during the post-v1.0.0 security
+and stub audit.
+
+- [ ] Fix MAVLink parser truncation panic on 1-2 byte buffers (`crates/tpt-t-hal/src/mavlink.rs::parse_frame`)
+- [ ] Fix swallowed RNG failure in `CryptoBox::from_kdf` (`crates/tpt-t-sec/src/cipher.rs`); propagate via `Result`, update `derive_key`/`respond_handshake`/`finish_handshake` callers
+- [ ] Fix dependency direction: drop `tpt-t-sec`'s dead dependency on `tpt-t-cloud`; add `tpt-t-cloud → tpt-t-sec`
+- [ ] Add `Attestation::to_bytes()`/`from_bytes()` wire format (`crates/tpt-t-sec/src/identity.rs`)
+- [ ] Authenticate HTTP fleet API (`/api/units/*`) and MCP dispatch via `FleetAuthz`/`Principal` (`crates/tpt-t-cloud/src/{server.rs,mcp.rs}`, new `auth.rs`); 401/403 on missing/insufficient attestation
+- [ ] Add connection cap / idle timeout to `FleetServer` (`ServerLimits`, `sweep_idle`)
+- [ ] Fix `AAD_CONTROL`/`AAD_TELEMETRY` mismatch in `tpt-t-sec::link::recv_decrypt` (telemetry currently always fails to decrypt)
+- [ ] Wire `Channel::Secure` framing through `tpt-t-link` (`frame_flags` byte, `Inbound::Secure`, `Event::Secure`, `ServiceCore::send_secure`)
+- [ ] Add `SecureUdpTransport` (`crates/tpt-t-cloud/src/secure_transport.rs`) implementing `UnitTransport` over encrypted per-peer sessions
+- [ ] Add session bootstrap over HTTP: `POST /api/units/:id/secure/handshake`
+- [ ] Harden mesh beacon acceptance: reject implausible timestamps, rate-limit address flapping (`crates/tpt-t-link/src/mesh.rs::NeighborTable::observe`)
+- [ ] Add/update tests across `tpt-t-sec`, `tpt-t-link`, `tpt-t-cloud` proving auth is enforced and traffic is encrypted (not just plumbed through)
+
+## Phase 16 — Adoption Tooling
+
+Goal: close the onboarding-friction gaps found in the adoption survey so a new
+developer/team can build, run, and evaluate the project with less friction.
+
+- [ ] Add real tests to `tpt-t-cli` (`deny`/`profile` file-writing tests, `scaffold`-then-build integration test) — closes the `todo.md` Phase 13 status note/reality mismatch
+- [ ] Make the scaffolded project's `Camera`/`Motor::run()` actually loop (push/pop real data) and join handles in generated `main()`
+- [ ] README: add a "Getting Started" section (clone/build/test/scaffold walkthrough), fix the broken CI badge link, add a "no system dependencies required" note
+- [ ] Fix/remove the `documentation = "https://docs.rs/tpt-t-core"` metadata (nothing is published)
+- [ ] Add `examples/` directory with 3 runnable `[[example]]` binaries
+- [ ] Add `CHANGELOG.md`
+- [ ] Add `SECURITY.md` (vulnerability disclosure policy)
+- [ ] Tighten `cargo-deny` advisories severity gate (currently `yanked = "warn"` only)
+- [ ] Add `tpt-t-cli doctor` subcommand (toolchain/environment sanity check)
+
+## Phase 17 — Innovative Additions
+
+Goal: make the system demoable without writing test code, reusing existing
+infrastructure (no new external dependencies).
+
+- [ ] `tpt-t-cli sim` — live terminal readout driving the Phase 4 simulator + safety loop end-to-end via `tpt-t-integration`'s `PipelineHarness`/`QuadDrone`
+- [ ] Live fleet dashboard — dependency-free static page served from `tpt-t-cloud` (`GET /`), wired to the now-authenticated `/api/units/*` actions
+- [ ] (Documented roadmap, not this pass) FDR replay/visualization tool (`tpt-t-cli replay <file>`)
+- [ ] (Documented roadmap, not this pass) AI co-pilot console over the secured MCP fleet dispatch

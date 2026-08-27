@@ -94,3 +94,44 @@ fn secure_control_over_real_udp_roundtrips_into_ring() {
     let received_a = tpt_t_link::mux::UdpMux::command_from_archived(arch_a);
     assert_eq!(received_a.seq, 8);
 }
+
+#[test]
+fn secure_telemetry_uses_separate_aad_and_decrypts() {
+    // Regression for the AAD_CONTROL/AAD_TELEMETRY mismatch (Phase 15, item 7):
+    // a telemetry envelope sealed under AAD_TELEMETRY must decrypt on the
+    // peer, which selects the AAD domain from the frame's inner-channel tag.
+    use tpt_t_core::ser::TelemetryKind;
+
+    let a = DeviceIdentity::generate(11, Role::Operator).unwrap();
+    let b = DeviceIdentity::generate(12, Role::Admin).unwrap();
+    let suites = CipherSuite::all().to_vec();
+    let (init, pending) = begin_handshake(&a, &suites).unwrap();
+    let (resp, sess_b) = respond_handshake(&b, &init, &suites).unwrap();
+    let sess_a = finish_handshake(&a, pending, &resp).unwrap();
+
+    let mut mux_a = SecureMux::bind(0, sess_a).unwrap();
+    let mut mux_b = SecureMux::bind(0, sess_b).unwrap();
+    let dst_b: SocketAddr = SocketAddr::from(([127, 0, 0, 1], mux_b.local_addr().unwrap().port()));
+
+    let pkt = TelemetryPacket {
+        values: [3.5; 8],
+        ..TelemetryPacket::zeroed(TelemetryKind::Battery, 42, 7)
+    };
+    let sent = mux_a.send_secure_telemetry(&pkt, dst_b, 0).unwrap();
+    assert!(sent > 0);
+
+    let ring: Arc<SpscRing<SecureBlock<256>>> = Arc::new(SpscRing::with_capacity(8));
+    let mut rx = tpt_t_link::mux::RxBuffer::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        if mux_b.recv_decrypt(&mut rx, &ring).unwrap() > 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let block = ring.pop().expect("telemetry block decrypted");
+    let arch = access_root::<TelemetryPacket>(block.as_slice()).expect("valid rkyv");
+    assert_eq!(arch.seq, 7);
+    assert_eq!(arch.kind, TelemetryKind::Battery);
+    assert_eq!(arch.values[0], 3.5);
+}

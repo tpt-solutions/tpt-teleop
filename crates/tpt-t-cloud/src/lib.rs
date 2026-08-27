@@ -21,6 +21,7 @@
 //! > A `quinn`/WebRTC transport may be swapped in behind the same traits if
 //! > dependency policy changes.
 
+pub mod auth;
 pub mod error;
 pub mod fleet;
 pub mod http;
@@ -30,13 +31,14 @@ pub mod recorder;
 pub mod server;
 pub mod sfu;
 
+pub use auth::{authenticate_request, authorize_tool, extract_attestation};
 pub use error::CloudError;
-pub use fleet::{CapturingTransport, Fleet, NullTransport, UdpTransport, UnitState, UnitTransport};
+pub use fleet::{CapturingTransport, Fleet, NullTransport, SecureUdpTransport, UdpTransport, UnitState, UnitTransport};
 pub use http::{Method, Request, Response};
 pub use json::Json;
 pub use mcp::McpServer;
 pub use recorder::{FileRecorder, NullRecorder, Recorder, VecRecorder};
-pub use server::FleetServer;
+pub use server::{FleetServer, ServerLimits};
 pub use sfu::{MediaFrame, SfuFanout};
 
 /// Crate version (from Cargo metadata).

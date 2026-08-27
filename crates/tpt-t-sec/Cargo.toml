@@ -12,7 +12,6 @@ description = "Zero-trust security model, RBAC, E2EE via RustCrypto AES-GCM / Ch
 tpt-t-core = { workspace = true }
 tpt-t-ring = { workspace = true }
 tpt-t-link = { workspace = true }
-tpt-t-cloud = { workspace = true }
 # All dual MIT OR Apache-2.0 (→ MIT under the §2 MIT-chain policy) unless noted.
 # Pure-Rust: no C/`cc` build step, simpler cross-compilation than `ring`.
 aes-gcm = "0.10"

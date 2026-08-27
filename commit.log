@@ -1,0 +1,8 @@
+[master 6780c9a] Phase 14: subsystem benchmarks, zero-lock/zero-alloc verification, validation doc, v1.0.0
+ 13 files changed, 437 insertions(+), 9 deletions(-)
+ create mode 100644 crates/tpt-t-core/benches/bus_bench.rs
+ create mode 100644 crates/tpt-t-hal/benches/sim_bench.rs
+ create mode 100644 crates/tpt-t-link/benches/serialize_bench.rs
+ create mode 100644 crates/tpt-t-media/benches/burnin_bench.rs
+ create mode 100644 crates/tpt-t-sec/benches/crypto_bench.rs
+ create mode 100644 docs/phase14-validation.md

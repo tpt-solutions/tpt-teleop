@@ -12,6 +12,7 @@ description = "Fleet management server, WebRTC SFU, session recording and MCP di
 tpt-t-core = { workspace = true }
 tpt-t-ring = { workspace = true }
 tpt-t-link = { workspace = true }
+tpt-t-sec = { workspace = true }
 
 [dev-dependencies]
 tpt-t-core = { workspace = true }

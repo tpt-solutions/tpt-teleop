@@ -112,17 +112,17 @@ impl CryptoBox {
 
     /// Derives a box from any 32-byte slice already produced by a KDF.
     #[inline]
-    pub fn from_kdf(suite: CipherSuite, kdf: &[u8; 32]) -> Self {
+    pub fn from_kdf(suite: CipherSuite, kdf: &[u8; 32]) -> Result<Self, SecError> {
         // new_from_slice only fails on length, and 32 is always valid here.
         let key = build_inner(suite, kdf).expect("32-byte key is valid for either suite");
         let mut salt = [0u8; 4];
-        let _ = getrandom(&mut salt);
-        Self {
+        getrandom(&mut salt).map_err(|_| SecError::KeyGen)?;
+        Ok(Self {
             key,
             suite,
             ctr: AtomicU64::new(0),
             salt,
-        }
+        })
     }
 
     /// The negotiated suite.
@@ -314,7 +314,7 @@ mod tests {
         for (i, b) in k.iter_mut().enumerate() {
             *b = (i as u8).wrapping_mul(7).wrapping_add(3);
         }
-        CryptoBox::from_kdf(suite, &k)
+        CryptoBox::from_kdf(suite, &k).unwrap()
     }
 
     #[test]

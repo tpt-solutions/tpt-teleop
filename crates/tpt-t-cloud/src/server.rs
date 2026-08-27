@@ -15,10 +15,18 @@
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tpt_t_core::eventloop::{EventHandler, EventLoop, PlatformLoop, Ready, Target, Token};
 
+use tpt_t_sec::cipher::CipherSuite;
+use tpt_t_sec::identity::DeviceIdentity;
+use tpt_t_sec::session::{SecureSession, respond_handshake};
+use tpt_t_sec::FleetAuthz;
+
+use crate::auth::{
+    authenticate_request, authorize_tool, handshake_init_from_json, handshake_resp_to_json,
+};
 use crate::error::CloudError;
 use crate::fleet::{Fleet, UnitTransport, parse_mode};
 use crate::http::{Method, Request, Response};
@@ -34,11 +42,32 @@ use std::os::windows::io::AsRawSocket;
 /// Registration token for the listening socket inside the event loop.
 const LISTENER_TOKEN: Token = 0;
 
+/// Server admission limits (Phase 15): bound concurrent connections and drop
+/// idle ones so a single peer cannot exhaust file descriptors or pin memory.
+#[derive(Debug, Clone, Copy)]
+pub struct ServerLimits {
+    /// Maximum number of accepted client connections (0 = unbounded).
+    pub max_conns: usize,
+    /// Idle timeout: a connection with no activity for longer than this is
+    /// reclaimed by [`FleetServer::sweep_idle`].
+    pub idle_timeout: Duration,
+}
+
+impl Default for ServerLimits {
+    fn default() -> Self {
+        Self {
+            max_conns: 1024,
+            idle_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
 /// One accepted client connection being served.
 struct Conn {
     stream: TcpStream,
     read_buf: Vec<u8>,
     registered: bool,
+    last_active: Instant,
 }
 
 /// Per-dispatch handler: mirrors the split-borrow pattern used by
@@ -50,6 +79,10 @@ struct ServerHandler<'a> {
     conns: &'a mut HashMap<Token, Conn>,
     fleet: &'a mut Fleet,
     mcp: &'a McpServer,
+    authz: Option<&'a FleetAuthz>,
+    identity: Option<&'a DeviceIdentity>,
+    sessions: &'a mut HashMap<u64, SecureSession>,
+    limits: &'a ServerLimits,
 }
 
 impl EventHandler for ServerHandler<'_> {
@@ -75,6 +108,13 @@ impl ServerHandler<'_> {
         loop {
             match listener.accept() {
                 Ok((stream, _addr)) => {
+                    // Connection cap: stop accepting once at the limit so a
+                    // single peer cannot exhaust file descriptors.
+                    if self.conns.len() >= self.limits.max_conns
+                        && self.limits.max_conns > 0
+                    {
+                        break;
+                    }
                     let _ = stream.set_nonblocking(true);
                     let token = *self.next_token;
                     *self.next_token = token.wrapping_add(1);
@@ -84,6 +124,7 @@ impl ServerHandler<'_> {
                             stream,
                             read_buf: Vec::with_capacity(8192),
                             registered: false,
+                            last_active: Instant::now(),
                         },
                     );
                 }
@@ -113,7 +154,10 @@ impl ServerHandler<'_> {
                         self.conns.remove(&token);
                         return;
                     }
-                    Ok(n) => conn.read_buf.extend_from_slice(&chunk[..n]),
+                    Ok(n) => {
+                        conn.read_buf.extend_from_slice(&chunk[..n]);
+                        conn.last_active = Instant::now();
+                    }
                     Err(e)
                         if e.kind() == io::ErrorKind::WouldBlock
                             || e.kind() == io::ErrorKind::TimedOut =>
@@ -159,7 +203,17 @@ impl ServerHandler<'_> {
         if req.method == Method::Post && req.path == "/mcp" {
             match Json::parse(&req.body) {
                 Ok(v) => {
-                    let result = self.mcp.handle(&v, self.fleet);
+                    // Zero-trust gate: every MCP tool call requires a verified
+                    // attestation. Missing/invalid → 401.
+                    let auth = match &self.authz {
+                        Some(authz) => match authenticate_request(authz, req) {
+                            Ok(principal) => Some((&**authz, principal)),
+                            Err(401) => return Response::error(401, "missing or invalid attestation"),
+                            Err(code) => return Response::error(code, "authentication failed"),
+                        },
+                        None => None,
+                    };
+                    let result = self.mcp.handle(&v, self.fleet, auth);
                     Response::json(200, result)
                 }
                 Err(e) => Response::error(400, &format!("invalid JSON-RPC body: {e}")),
@@ -219,6 +273,11 @@ impl ServerHandler<'_> {
             }
         };
 
+        // Secure handshake bootstrap: POST /api/units/:id/secure/handshake.
+        if req.path.ends_with("/secure/handshake") && req.method == Method::Post {
+            return self.handle_secure_handshake(id, req);
+        }
+
         let action = unit_action(&req.path);
         match (req.method.clone(), action) {
             (Method::Get, None) => match self.fleet.get(id) {
@@ -236,6 +295,9 @@ impl ServerHandler<'_> {
                 Err(e) => Response::error(404, &e.to_string()),
             },
             (Method::Post, Some("assign")) => {
+                if let Err(r) = self.require_auth(req, "assign_unit") {
+                    return r;
+                }
                 let body = Json::parse(&req.body).unwrap_or(Json::Null);
                 let op = body
                     .get("operator")
@@ -255,9 +317,22 @@ impl ServerHandler<'_> {
                     None => Response::error(400, "missing operator"),
                 }
             }
-            (Method::Post, Some("engage_autonomy")) => self.mode_action(id, "engage"),
-            (Method::Post, Some("take_manual_control")) => self.mode_action(id, "take"),
+            (Method::Post, Some("engage_autonomy")) => {
+                if let Err(r) = self.require_auth(req, "engage_autonomy") {
+                    return r;
+                }
+                self.mode_action(id, "engage")
+            }
+            (Method::Post, Some("take_manual_control")) => {
+                if let Err(r) = self.require_auth(req, "take_manual_control") {
+                    return r;
+                }
+                self.mode_action(id, "take")
+            }
             (Method::Post, Some("command")) => {
+                if let Err(r) = self.require_auth(req, "send_control") {
+                    return r;
+                }
                 let body = Json::parse(&req.body).unwrap_or(Json::Null);
                 let m = body.get("mode").and_then(|v| v.as_str());
                 match m.and_then(parse_mode) {
@@ -275,6 +350,49 @@ impl ServerHandler<'_> {
                 }
             }
             _ => Response::error(405, "method not allowed"),
+        }
+    }
+
+    /// Enforces zero-trust admission for a privileged fleet action. With no
+    /// [`FleetAuthz`] configured the gate is open (legacy / LAN mode). With a
+    /// gate: missing/invalid attestation → `401`; a verified but unauthorized
+    /// principal → `403`.
+    fn require_auth(&self, req: &Request, tool: &str) -> Result<(), Response> {
+        match &self.authz {
+            Some(authz) => {
+                let principal = authenticate_request(authz, req)
+                    .map_err(|code| Response::error(code, "authentication failed"))?;
+                if authorize_tool(authz, &principal, tool) {
+                    Ok(())
+                } else {
+                    Err(Response::error(403, "insufficient attestation for this action"))
+                }
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// Runs a mutually-authenticated handshake for `id` (item 10). The server's
+    /// identity signs the reply; the established session is stored for the
+    /// unit so downstream encrypted transport can use it.
+    fn handle_secure_handshake(&mut self, id: u64, req: &Request) -> Response {
+        let identity = match self.identity {
+            Some(i) => i,
+            None => return Response::error(501, "secure handshake not configured"),
+        };
+        let body = Json::parse(&req.body)
+            .map_err(|e| Response::error(400, &format!("invalid handshake body: {e}")))
+            .unwrap_or(Json::Null);
+        let init = match handshake_init_from_json(&body) {
+            Some(i) => i,
+            None => return Response::error(400, "missing attestation or suites"),
+        };
+        match respond_handshake(identity, &init, CipherSuite::all()) {
+            Ok((resp, session)) => {
+                self.sessions.insert(id, session);
+                Response::json(200, handshake_resp_to_json(&resp))
+            }
+            Err(e) => Response::error(403, &format!("handshake rejected: {e}")),
         }
     }
 
@@ -302,6 +420,10 @@ pub struct FleetServer {
     conns: HashMap<Token, Conn>,
     fleet: Fleet,
     mcp: McpServer,
+    authz: Option<FleetAuthz>,
+    identity: Option<DeviceIdentity>,
+    sessions: HashMap<u64, SecureSession>,
+    limits: ServerLimits,
 }
 
 impl FleetServer {
@@ -315,6 +437,10 @@ impl FleetServer {
             conns: HashMap::new(),
             fleet: Fleet::new(transport),
             mcp: McpServer::new(),
+            authz: None,
+            identity: None,
+            sessions: HashMap::new(),
+            limits: ServerLimits::default(),
         })
     }
 
@@ -332,6 +458,36 @@ impl FleetServer {
         server.ev.register(ltarget, LISTENER_TOKEN, Ready::READ)?;
         server.listener = Some(listener);
         Ok(server)
+    }
+
+    /// Installs the zero-trust gate and the server's signing identity. With a
+    /// gate installed, every privileged fleet/MCP action requires a verified
+    /// attestation (see [`require_auth`](Self::require_auth)).
+    pub fn with_security(&mut self, authz: FleetAuthz, identity: DeviceIdentity) -> &mut Self {
+        self.authz = Some(authz);
+        self.identity = Some(identity);
+        self
+    }
+
+    /// Overrides the server admission limits (connection cap / idle timeout).
+    pub fn with_limits(&mut self, limits: ServerLimits) -> &mut Self {
+        self.limits = limits;
+        self
+    }
+
+    /// Reclaims idle client connections (no activity for longer than
+    /// [`ServerLimits::idle_timeout`]). Call periodically from the event loop.
+    pub fn sweep_idle(&mut self) {
+        let now = Instant::now();
+        let timeout = self.limits.idle_timeout;
+        self.conns
+            .retain(|_, c| now.saturating_duration_since(c.last_active) <= timeout);
+    }
+
+    /// Immutable access to a bootstrapped secure session (per unit id),
+    /// established via the `/secure/handshake` endpoint (item 10).
+    pub fn session(&self, id: u64) -> Option<&SecureSession> {
+        self.sessions.get(&id)
     }
 
     /// The bound local address (peers connect here).
@@ -372,14 +528,25 @@ impl FleetServer {
             conns,
             fleet,
             mcp,
+            authz,
+            identity,
+            sessions,
+            limits,
         } = self;
         let listener = listener.as_mut();
+        let authz_ref = authz.as_ref();
+        let identity_ref = identity.as_ref();
+        let limits_ref = &*limits;
         let mut h = ServerHandler {
             listener,
             next_token,
             conns,
             fleet,
             mcp,
+            authz: authz_ref,
+            identity: identity_ref,
+            sessions,
+            limits: limits_ref,
         };
         h.dispatch(req)
     }
@@ -395,14 +562,25 @@ impl FleetServer {
             conns,
             fleet,
             mcp,
+            authz,
+            identity,
+            sessions,
+            limits,
         } = self;
         let listener_field = listener.as_mut();
+        let authz_ref = authz.as_ref();
+        let identity_ref = identity.as_ref();
+        let limits_ref = &*limits;
         let mut handler = ServerHandler {
             listener: listener_field,
             next_token,
             conns,
             fleet,
             mcp,
+            authz: authz_ref,
+            identity: identity_ref,
+            sessions,
+            limits: limits_ref,
         };
         let n = ev.dispatch(Some(timeout), &mut handler).unwrap_or(0);
         self.pump();
@@ -418,14 +596,25 @@ impl FleetServer {
             conns,
             fleet,
             mcp,
+            authz,
+            identity,
+            sessions,
+            limits,
         } = self;
         let listener_field = listener.as_mut();
+        let authz_ref = authz.as_ref();
+        let identity_ref = identity.as_ref();
+        let limits_ref = &*limits;
         let mut h = ServerHandler {
             listener: listener_field,
             next_token,
             conns,
             fleet,
             mcp,
+            authz: authz_ref,
+            identity: identity_ref,
+            sessions,
+            limits: limits_ref,
         };
         h.try_accept();
         let tokens: Vec<Token> = h.conns.keys().copied().collect();
@@ -666,5 +855,202 @@ mod tests {
         let body = String::from_utf8_lossy(&resp.body);
         assert_eq!(resp.status, 200, "body: {body}");
         assert_eq!(server.fleet().get(1).unwrap().mode, Mode::Auto);
+    }
+}
+
+/// Phase 15 security hardening tests: zero-trust admission, the secure
+/// handshake bootstrap, and encrypted transport. These prove auth is *enforced*
+/// (not merely plumbed) and that fleet traffic is actually encrypted.
+#[cfg(test)]
+mod phase15_tests {
+    use super::*;
+    use crate::auth::attestation_header;
+    use crate::fleet::{CapturingTransport, SecureUdpTransport};
+    use crate::recorder::VecRecorder;
+    use std::net::{IpAddr, Ipv4Addr, UdpSocket};
+    use std::time::Instant;
+    use tpt_t_core::mode::Mode;
+    use tpt_t_core::ser::{ControlCommand, FRAME_MAGIC};
+    use tpt_t_sec::cipher::CipherSuite;
+    use tpt_t_sec::identity::{Attestation, DeviceIdentity};
+    use tpt_t_sec::rbac::Role;
+    use tpt_t_sec::zerotrust::TrustStore;
+    use tpt_t_sec::FleetAuthz;
+
+    fn hex(bytes: &[u8]) -> String {
+        const H: &[u8; 16] = b"0123456789abcdef";
+        let mut s = String::with_capacity(bytes.len() * 2);
+        for &b in bytes {
+            s.push(H[(b >> 4) as usize] as char);
+            s.push(H[(b & 0x0f) as usize] as char);
+        }
+        s
+    }
+
+    fn addr() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 5000)
+    }
+
+    #[test]
+    fn gate_without_attestation_is_rejected_401() {
+        let op = DeviceIdentity::generate(1, Role::Operator).unwrap();
+        let mut trust = TrustStore::new();
+        trust.enroll(1, op.public_key(), Role::Operator);
+        let srv_identity = DeviceIdentity::generate(99, Role::Admin).unwrap();
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(1, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        server.with_security(FleetAuthz::with_trust(trust), srv_identity);
+
+        let req = Request::parse(
+            b"POST /api/units/1/engage_autonomy HTTP/1.1\r\nContent-Length: 0\r\n\r\n",
+        )
+        .unwrap()
+        .unwrap()
+        .0;
+        let resp = server.handle_request(&req);
+        assert_eq!(resp.status, 401, "no attestation must be rejected");
+    }
+
+    #[test]
+    fn unenrolled_attestation_is_rejected_401() {
+        let op = DeviceIdentity::generate(1, Role::Operator).unwrap();
+        let srv_identity = DeviceIdentity::generate(99, Role::Admin).unwrap();
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(1, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        server.with_security(FleetAuthz::with_trust(TrustStore::new()), srv_identity);
+
+        let eph = [0xABu8; 32];
+        let att = Attestation::sign(&op, &eph).unwrap();
+        let header = attestation_header(&att);
+        let raw = format!(
+            "POST /api/units/1/engage_autonomy HTTP/1.1\r\n{header}\r\nContent-Length: 0\r\n\r\n"
+        );
+        let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
+        let resp = server.handle_request(&req);
+        assert_eq!(resp.status, 401, "unenrolled unit must be rejected");
+    }
+
+    #[test]
+    fn operator_attestation_is_admitted_and_changes_mode() {
+        let op = DeviceIdentity::generate(1, Role::Operator).unwrap();
+        let mut trust = TrustStore::new();
+        trust.enroll(1, op.public_key(), Role::Operator);
+        let srv_identity = DeviceIdentity::generate(99, Role::Admin).unwrap();
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(1, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        server.with_security(FleetAuthz::with_trust(trust), srv_identity);
+
+        let eph = [0xBBu8; 32];
+        let att = Attestation::sign(&op, &eph).unwrap();
+        let header = attestation_header(&att);
+        let raw = format!(
+            "POST /api/units/1/engage_autonomy HTTP/1.1\r\n{header}\r\nContent-Length: 0\r\n\r\n"
+        );
+        let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
+        let resp = server.handle_request(&req);
+        assert_eq!(resp.status, 200, "operator must be admitted: {:?}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(server.fleet().get(1).unwrap().mode, Mode::Auto);
+    }
+
+    #[test]
+    fn observer_cannot_engage_autonomy_403() {
+        // An Observer is enrolled and verified but lacks the EngageAutonomy
+        // permission → 403 (not 401).
+        let obs = DeviceIdentity::generate(3, Role::Observer).unwrap();
+        let mut trust = TrustStore::new();
+        trust.enroll(3, obs.public_key(), Role::Observer);
+        let srv_identity = DeviceIdentity::generate(99, Role::Admin).unwrap();
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(3, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        server.with_security(FleetAuthz::with_trust(trust), srv_identity);
+
+        let eph = [0xCCu8; 32];
+        let att = Attestation::sign(&obs, &eph).unwrap();
+        let header = attestation_header(&att);
+        let raw = format!(
+            "POST /api/units/3/engage_autonomy HTTP/1.1\r\n{header}\r\nContent-Length: 0\r\n\r\n"
+        );
+        let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
+        let resp = server.handle_request(&req);
+        assert_eq!(resp.status, 403, "observer lacks engage permission");
+    }
+
+    #[test]
+    fn secure_handshake_bootstraps_a_session() {
+        let op = DeviceIdentity::generate(1, Role::Operator).unwrap();
+        let mut trust = TrustStore::new();
+        trust.enroll(1, op.public_key(), Role::Operator);
+        let srv_identity = DeviceIdentity::generate(99, Role::Admin).unwrap();
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(1, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        server.with_security(FleetAuthz::with_trust(trust), srv_identity);
+
+        let eph = [0x33u8; 32];
+        let init_att = Attestation::sign(&op, &eph).unwrap();
+        let body = format!(
+            "{{\"attestation\":\"{}\",\"suites\":[1]}}",
+            hex(&init_att.to_bytes())
+        );
+        let raw = format!(
+            "POST /api/units/1/secure/handshake HTTP/1.1\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
+        let resp = server.handle_request(&req);
+        assert_eq!(resp.status, 200, "handshake: {:?}", String::from_utf8_lossy(&resp.body));
+        assert!(server.session(1).is_some(), "session stored for unit 1");
+    }
+
+    #[test]
+    fn secure_transport_emits_encrypted_secure_frames() {
+        // A command sent via SecureUdpTransport must be framed on the
+        // Channel::Secure (byte 8 == 6) and its plaintext rkyv magic must not
+        // appear in the captured bytes — i.e. traffic is actually encrypted.
+        let key = [0x07u8; 32];
+        let mut transport = SecureUdpTransport::bind(&key, CipherSuite::Aes256Gcm).unwrap();
+        let recv = UdpSocket::bind("127.0.0.1:0").unwrap();
+        recv.set_nonblocking(true).ok();
+        let dst = recv.local_addr().unwrap();
+
+        let cmd = ControlCommand::zeroed(Mode::FullTeleop);
+        transport.send_command(dst, &cmd).unwrap();
+
+        let mut buf = [0u8; 1500];
+        let mut captured = None;
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if let Ok((n, _)) = recv.recv_from(&mut buf) {
+                captured = Some(buf[..n].to_vec());
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let bytes = captured.expect("datagram received");
+        assert_eq!(bytes[8], 6, "must be sent on Channel::Secure");
+        let magic = FRAME_MAGIC.to_le_bytes();
+        assert!(
+            !contains_subslice(&bytes[16..], &magic),
+            "plaintext command magic leaked into the secure frame"
+        );
+    }
+
+    fn contains_subslice(haystack: &[u8], needle: &[u8]) -> bool {
+        if needle.is_empty() || haystack.len() < needle.len() {
+            return false;
+        }
+        haystack
+            .windows(needle.len())
+            .any(|w| w == needle)
     }
 }

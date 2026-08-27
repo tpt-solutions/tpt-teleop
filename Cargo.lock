@@ -683,7 +683,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tpt-t-analytics"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -693,23 +693,24 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tpt-t-core",
 ]
 
 [[package]]
 name = "tpt-t-cloud"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-link",
  "tpt-t-ring",
+ "tpt-t-sec",
 ]
 
 [[package]]
 name = "tpt-t-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "rkyv",
@@ -719,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-hal"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "rkyv",
@@ -729,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-input"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -741,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-integration"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-hal",
@@ -754,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-link"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "io-uring",
  "libc",
@@ -766,7 +767,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-macros"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -778,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-media"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-link",
@@ -786,11 +787,11 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-ring"
-version = "0.1.0"
+version = "1.0.0"
 
 [[package]]
 name = "tpt-t-safety"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -801,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-sec"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -810,7 +811,6 @@ dependencies = [
  "getrandom",
  "hkdf",
  "sha2",
- "tpt-t-cloud",
  "tpt-t-core",
  "tpt-t-link",
  "tpt-t-ring",
