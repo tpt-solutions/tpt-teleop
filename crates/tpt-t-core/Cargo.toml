@@ -20,3 +20,7 @@ windows-sys = { workspace = true }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "bus_bench"
+harness = false

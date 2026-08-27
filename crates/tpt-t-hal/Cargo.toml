@@ -19,3 +19,7 @@ libc = { workspace = true }
 [lints]
 workspace = true
 
+[[bench]]
+name = "sim_bench"
+harness = false
+

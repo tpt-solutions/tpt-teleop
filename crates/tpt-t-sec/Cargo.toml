@@ -27,5 +27,9 @@ ed25519-dalek = "2"
 [dev-dependencies]
 tpt-t-core = { workspace = true }
 
+[[bench]]
+name = "crypto_bench"
+harness = false
+
 [lints]
 workspace = true

@@ -34,6 +34,23 @@ is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
 > warnings -p tpt-t-hal` are green.
 
 
+> **Status (2026-08-27):** Phase 14 (Integration, Benchmarking & Release)
+> complete. `tpt-t-integration` provides the full
+> `PipelineHarness` (Ingest → Normalize → Route → Safety → Serialize →
+> Transmit) exercised by 5 end-to-end tests against the Phase 4 simulator,
+> including a physics-driven `QuadDrone` sink that proves the safety-sanitized
+> command flies inside its envelope. Zero-heap allocation is verified by a
+> `CountingAllocator` global (net ≤ 0, ≤ 64 allocs in a 10k-command window,
+> both planes); zero-lock is verified by `tools/lock-audit.sh`/`.ps1` (no
+> `Mutex`/`RwLock`/`parking_lot`/etc. in any `crates/*/src`). The cross-platform
+> CI `integration` job runs the suite against the simulator and the lock audit;
+> `lint.yml` enforces fmt/clippy `-D warnings`/`cargo-deny`. The benchmark suite
+> (hand-rolled, zero-dep) spans core, link, hal, media, sec, and the full
+> pipeline (p50 ≈ 6.9 µs, 137k cmd/s end-to-end). `docs/phase14-validation.md`
+> records the verification + benchmark numbers. `cargo test --workspace`,
+> `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+> and `cargo deny check` are all green. Tagged **v1.0.0**.
+
 ## Phase 0 — Foundation & Tooling
 
 Goal: repo, licensing, and CI exist before any feature code is written.
@@ -249,11 +266,11 @@ Goal: ergonomic macro-driven setup and project scaffolding tooling.
 
 Goal: verified end-to-end, zero-allocation, zero-lock data path; ready to tag v1.0.0.
 
-- [ ] Build full end-to-end test: Ingest â†’ Normalize â†’ Route â†’ Safety â†’ Serialize â†’ Transmit
-- [ ] Verify zero heap allocations in the hot path (allocation-counting tooling)
-- [ ] Verify zero mutex locks in the hot path
-- [ ] Run full cross-platform CI integration suite against Phase 4 simulator
-- [ ] Build latency/jitter/throughput benchmark suite across all subsystems
-- [ ] Write documentation pass + macro-driven quick-start guide
-- [ ] Final license/cargo-deny audit before release
-- [ ] Tag v1.0.0 release
+- [x] Build full end-to-end test: Ingest → Normalize → Route → Safety → Serialize → Transmit
+- [x] Verify zero heap allocations in the hot path (allocation-counting tooling)
+- [x] Verify zero mutex locks in the hot path
+- [x] Run full cross-platform CI integration suite against Phase 4 simulator
+- [x] Build latency/jitter/throughput benchmark suite across all subsystems
+- [x] Write documentation pass + macro-driven quick-start guide
+- [x] Final license/cargo-deny audit before release
+- [x] Tag v1.0.0 release
