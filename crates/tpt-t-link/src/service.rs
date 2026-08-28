@@ -453,12 +453,7 @@ impl ServiceCore {
     /// on the `Channel::Secure` channel. `inner` is the
     /// [`secure_inner`](crate::mux::secure_inner) tag selecting the receiver's
     /// AEAD AAD domain (control vs telemetry).
-    pub fn send_secure(
-        &mut self,
-        sealed: &[u8],
-        inner: u8,
-        dst: SocketAddr,
-    ) -> io::Result<()> {
+    pub fn send_secure(&mut self, sealed: &[u8], inner: u8, dst: SocketAddr) -> io::Result<()> {
         let now = self.now_ns();
         let n = self.mux.write_secure_frame(sealed, inner, &mut self.tx)?;
         let mut frame = [0u8; MAX_DATAGRAM];
@@ -558,9 +553,11 @@ impl Session<'_> {
                     ),
                     Inbound::Ice { payload, from } => Frame::Ice(payload.to_vec(), from),
                     Inbound::Mesh { beacon, from } => Frame::Beacon(beacon, from),
-                    Inbound::Secure { sealed, from, inner } => {
-                        Frame::Secure(sealed.to_vec(), from, inner)
-                    }
+                    Inbound::Secure {
+                        sealed,
+                        from,
+                        inner,
+                    } => Frame::Secure(sealed.to_vec(), from, inner),
                     Inbound::Ack { ack, .. } => Frame::Ack(ack),
                 },
                 Ok(Some(Err(e))) => {

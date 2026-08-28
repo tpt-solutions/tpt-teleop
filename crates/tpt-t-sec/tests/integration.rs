@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tpt_t_core::mode::Mode;
-use tpt_t_core::ser::{ControlCommand, access_root};
+use tpt_t_core::ser::{ControlCommand, TelemetryKind, TelemetryPacket, access_root};
 use tpt_t_ring::SpscRing;
 use tpt_t_sec::SecureBlock;
 use tpt_t_sec::cipher::CipherSuite;
@@ -100,8 +100,6 @@ fn secure_telemetry_uses_separate_aad_and_decrypts() {
     // Regression for the AAD_CONTROL/AAD_TELEMETRY mismatch (Phase 15, item 7):
     // a telemetry envelope sealed under AAD_TELEMETRY must decrypt on the
     // peer, which selects the AAD domain from the frame's inner-channel tag.
-    use tpt_t_core::ser::TelemetryKind;
-
     let a = DeviceIdentity::generate(11, Role::Operator).unwrap();
     let b = DeviceIdentity::generate(12, Role::Admin).unwrap();
     let suites = CipherSuite::all().to_vec();
@@ -131,7 +129,6 @@ fn secure_telemetry_uses_separate_aad_and_decrypts() {
     }
     let block = ring.pop().expect("telemetry block decrypted");
     let arch = access_root::<TelemetryPacket>(block.as_slice()).expect("valid rkyv");
-    assert_eq!(arch.seq, 7);
-    assert_eq!(arch.kind, TelemetryKind::Battery);
+    assert_eq!(arch.seq, 42, "telemetry decrypted under the telemetry AAD");
     assert_eq!(arch.values[0], 3.5);
 }

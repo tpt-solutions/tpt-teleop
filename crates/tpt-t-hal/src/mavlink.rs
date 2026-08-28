@@ -448,10 +448,7 @@ mod tests {
 
     #[test]
     fn truncated_one_and_two_byte_buffers_do_not_panic() {
-        assert_eq!(
-            parse_frame(&[MAVLINK_1_MAGIC]),
-            Err(MavError::Truncated)
-        );
+        assert_eq!(parse_frame(&[MAVLINK_1_MAGIC]), Err(MavError::Truncated));
         assert_eq!(
             parse_frame(&[MAVLINK_2_MAGIC, 0x05]),
             Err(MavError::Truncated)

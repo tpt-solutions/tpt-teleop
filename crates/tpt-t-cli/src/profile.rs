@@ -116,3 +116,47 @@ pub fn default_profile_text(cores: usize) -> String {
 
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tpt_t_core::profile::CoreProfile;
+
+    #[test]
+    fn writes_profile_to_explicit_path() {
+        let dir = std::env::temp_dir().join(format!("tpt_cli_profile_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let out = dir.join("core-profile.txt");
+        let code = run(&[
+            "--cores".into(),
+            "4".into(),
+            "--out".into(),
+            out.to_string_lossy().to_string(),
+        ]);
+        assert_eq!(code, 0);
+        let text = std::fs::read_to_string(&out).expect("file written");
+        assert!(text.contains("video = 0"));
+        assert!(text.contains("control = 1"));
+        // The generated profile must parse back into a valid CoreProfile.
+        let parsed = CoreProfile::parse(&text).expect("profile parses");
+        assert!(!parsed.cores_for(Role::Video).is_empty());
+        let _ = std::fs::remove_file(&out);
+    }
+
+    #[test]
+    fn rejects_bad_cores_value() {
+        assert_eq!(run(&["--cores".into(), "notanumber".into()]), 1);
+    }
+
+    #[test]
+    fn rejects_unknown_argument() {
+        assert_eq!(run(&["--bogus".into()]), 1);
+    }
+
+    #[test]
+    fn default_text_parses_and_is_nonempty() {
+        let text = default_profile_text(4);
+        assert!(text.contains("video"));
+        assert!(CoreProfile::parse(&text).is_ok());
+    }
+}

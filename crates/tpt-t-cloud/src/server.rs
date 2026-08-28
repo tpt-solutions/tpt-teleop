@@ -19,10 +19,10 @@ use std::time::{Duration, Instant};
 
 use tpt_t_core::eventloop::{EventHandler, EventLoop, PlatformLoop, Ready, Target, Token};
 
+use tpt_t_sec::FleetAuthz;
 use tpt_t_sec::cipher::CipherSuite;
 use tpt_t_sec::identity::DeviceIdentity;
 use tpt_t_sec::session::{SecureSession, respond_handshake};
-use tpt_t_sec::FleetAuthz;
 
 use crate::auth::{
     authenticate_request, authorize_tool, handshake_init_from_json, handshake_resp_to_json,
@@ -110,9 +110,7 @@ impl ServerHandler<'_> {
                 Ok((stream, _addr)) => {
                     // Connection cap: stop accepting once at the limit so a
                     // single peer cannot exhaust file descriptors.
-                    if self.conns.len() >= self.limits.max_conns
-                        && self.limits.max_conns > 0
-                    {
+                    if self.conns.len() >= self.limits.max_conns && self.limits.max_conns > 0 {
                         break;
                     }
                     let _ = stream.set_nonblocking(true);
@@ -200,6 +198,11 @@ impl ServerHandler<'_> {
 
     /// Routes a parsed request to the MCP endpoint or the dashboard API.
     fn dispatch(&mut self, req: &Request) -> Response {
+        // Dependency-free live fleet dashboard (Phase 17): a static page wired
+        // to the now-authenticated `/api/units/*` actions.
+        if req.method == Method::Get && req.path == "/" {
+            return Response::html(200, &dashboard_html());
+        }
         if req.method == Method::Post && req.path == "/mcp" {
             match Json::parse(&req.body) {
                 Ok(v) => {
@@ -208,7 +211,9 @@ impl ServerHandler<'_> {
                     let auth = match &self.authz {
                         Some(authz) => match authenticate_request(authz, req) {
                             Ok(principal) => Some((&**authz, principal)),
-                            Err(401) => return Response::error(401, "missing or invalid attestation"),
+                            Err(401) => {
+                                return Response::error(401, "missing or invalid attestation");
+                            }
                             Err(code) => return Response::error(code, "authentication failed"),
                         },
                         None => None,
@@ -365,7 +370,10 @@ impl ServerHandler<'_> {
                 if authorize_tool(authz, &principal, tool) {
                     Ok(())
                 } else {
-                    Err(Response::error(403, "insufficient attestation for this action"))
+                    Err(Response::error(
+                        403,
+                        "insufficient attestation for this action",
+                    ))
                 }
             }
             None => Ok(()),
@@ -585,6 +593,7 @@ impl FleetServer {
         let n = ev.dispatch(Some(timeout), &mut handler).unwrap_or(0);
         self.pump();
         self.register_pending();
+        self.sweep_idle();
         Ok(n.max(1))
     }
 
@@ -665,6 +674,95 @@ fn unit_action(path: &str) -> Option<&str> {
     } else {
         None
     }
+}
+
+/// The dependency-free fleet dashboard served at `GET /` (Phase 17).
+///
+/// Pure static HTML + a small inline script: it polls `/api/health` and
+/// `/api/units`, renders the live fleet, and lets the operator drive the
+/// authenticated `/api/units/:id/{engage_autonomy,take_manual_control}` actions.
+/// When the server runs with a `FleetAuthz` gate, the operator pastes a valid
+/// attestation into the field and it is sent as the `TPT-Attestation` header —
+/// exactly the same header `tpt_t_cloud::auth::authenticate_request` expects.
+pub fn dashboard_html() -> String {
+    let body = r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tpt-teleop fleet</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0b0e13; color:#c9d1d9; margin:0; padding:1.2rem; }
+  h1 { font-size:1.1rem; margin:0 0 .4rem; }
+  #status { color:#8b949e; margin-bottom:1rem; }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; }
+  th, td { text-align:left; padding:.35rem .6rem; border-bottom:1px solid #21262d; }
+  th { color:#8b949e; font-weight:600; }
+  button { background:#238636; color:#fff; border:0; border-radius:4px; padding:.3rem .6rem; cursor:pointer; margin-right:.3rem; font:inherit; }
+  button.manual { background:#1f6feb; }
+  input { background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; padding:.3rem .5rem; font:inherit; width:42ch; }
+  .err { color:#f85149; }
+  .ok { color:#3fb950; }
+</style>
+</head>
+<body>
+  <h1>tpt-teleop &mdash; fleet dashboard</h1>
+  <div id="status">connecting&hellip;</div>
+  <p><label>Attestation (hex, for gated servers): <input id="att" placeholder="paste TPT-Attestation hex"></label></p>
+  <table>
+    <thead><tr><th>id</th><th>mode</th><th>operator</th><th>subs</th><th>seq</th><th>recorded</th><th>actions</th></tr></thead>
+    <tbody id="rows"><tr><td colspan="7">loading&hellip;</td></tr></tbody>
+  </table>
+<script>
+const att = () => document.getElementById('att').value.trim();
+function headers() {
+  const h = { 'Content-Type': 'application/json' };
+  const a = att();
+  if (a) h['TPT-Attestation'] = a;
+  return h;
+}
+async function refresh() {
+  try {
+    const health = await fetch('/api/health').then(r => r.json());
+    document.getElementById('status').textContent =
+      'status: ' + health.status + ' · units: ' + health.units + ' · version: ' + health.version;
+    const list = await fetch('/api/units').then(r => r.json());
+    const units = list.units || [];
+    const tb = document.getElementById('rows');
+    tb.innerHTML = '';
+    for (const u of units) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + u.id + '</td><td>' + u.mode + '</td><td>' + (u.assigned_operator || '-') +
+        '</td><td>' + u.subscribers + '</td><td>' + u.last_seq + '</td><td>' + u.frames_recorded + '</td>';
+      const td = document.createElement('td');
+      const auto = document.createElement('button');
+      auto.textContent = 'engage autonomy';
+      auto.onclick = () => act(u.id, 'engage_autonomy');
+      const man = document.createElement('button');
+      man.className = 'manual';
+      man.textContent = 'take manual';
+      man.onclick = () => act(u.id, 'take_manual_control');
+      td.appendChild(auto); td.appendChild(man);
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    }
+  } catch (e) {
+    document.getElementById('status').innerHTML = '<span class="err">error: ' + e + '</span>';
+  }
+}
+async function act(id, action) {
+  const res = await fetch('/api/units/' + id + '/' + action, { method: 'POST', headers: headers() });
+  const msg = res.ok ? '<span class="ok">' + action + ' ok</span>' : '<span class="err">' + res.status + '</span>';
+  document.getElementById('status').innerHTML = 'last action: ' + msg;
+  refresh();
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>"#;
+    body.to_string()
 }
 
 #[cfg(test)]
@@ -801,6 +899,42 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_served_at_root() {
+        let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
+        server
+            .register_unit(1, addr(), Box::new(VecRecorder::new()))
+            .unwrap();
+        let req = Request::parse(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            .unwrap()
+            .unwrap()
+            .0;
+        let resp = server.handle_request(&req);
+        let body = String::from_utf8_lossy(&resp.body);
+        assert_eq!(resp.status, 200);
+        assert!(
+            resp.headers
+                .iter()
+                .any(|(k, v)| k == "content-type" && v.contains("text/html")),
+            "dashboard must be served as HTML"
+        );
+        assert!(body.contains("fleet dashboard"), "body: {body}");
+        // Wired to the authenticated fleet actions.
+        assert!(
+            body.contains("/api/units/"),
+            "dashboard must reference the fleet API"
+        );
+    }
+
+    #[test]
+    fn dashboard_html_is_self_contained() {
+        let html = dashboard_html();
+        assert!(html.contains("text/html") || html.contains("<!doctype html>"));
+        assert!(html.contains("engage_autonomy"));
+        assert!(html.contains("take_manual_control"));
+        assert!(html.contains("TPT-Attestation"));
+    }
+
+    #[test]
     fn list_units_via_mcp_handle_request() {
         let mut server = FleetServer::new(Box::new(CapturingTransport::new())).unwrap();
         server
@@ -871,11 +1005,11 @@ mod phase15_tests {
     use std::time::Instant;
     use tpt_t_core::mode::Mode;
     use tpt_t_core::ser::{ControlCommand, FRAME_MAGIC};
+    use tpt_t_sec::FleetAuthz;
     use tpt_t_sec::cipher::CipherSuite;
     use tpt_t_sec::identity::{Attestation, DeviceIdentity};
     use tpt_t_sec::rbac::Role;
     use tpt_t_sec::zerotrust::TrustStore;
-    use tpt_t_sec::FleetAuthz;
 
     fn hex(bytes: &[u8]) -> String {
         const H: &[u8; 16] = b"0123456789abcdef";
@@ -954,7 +1088,12 @@ mod phase15_tests {
         );
         let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
         let resp = server.handle_request(&req);
-        assert_eq!(resp.status, 200, "operator must be admitted: {:?}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "operator must be admitted: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
         assert_eq!(server.fleet().get(1).unwrap().mode, Mode::Auto);
     }
 
@@ -1008,7 +1147,12 @@ mod phase15_tests {
         );
         let req = Request::parse(raw.as_bytes()).unwrap().unwrap().0;
         let resp = server.handle_request(&req);
-        assert_eq!(resp.status, 200, "handshake: {:?}", String::from_utf8_lossy(&resp.body));
+        assert_eq!(
+            resp.status,
+            200,
+            "handshake: {:?}",
+            String::from_utf8_lossy(&resp.body)
+        );
         assert!(server.session(1).is_some(), "session stored for unit 1");
     }
 
@@ -1049,8 +1193,6 @@ mod phase15_tests {
         if needle.is_empty() || haystack.len() < needle.len() {
             return false;
         }
-        haystack
-            .windows(needle.len())
-            .any(|w| w == needle)
+        haystack.windows(needle.len()).any(|w| w == needle)
     }
 }

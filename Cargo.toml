@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 authors = ["TPT Solutions"]
 repository = "https://github.com/tpt-solutions/tpt-teleop"
 homepage = "https://tpt.solutions/tpt-teleop"
-documentation = "https://docs.rs/tpt-t-core"
+documentation = "https://github.com/tpt-solutions/tpt-teleop#readme"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
@@ -31,6 +31,7 @@ tpt-t-cloud = { path = "crates/tpt-t-cloud" }
 tpt-t-sec = { path = "crates/tpt-t-sec" }
 tpt-t-analytics = { path = "crates/tpt-t-analytics" }
 tpt-t-macros = { path = "crates/tpt-t-macros" }
+tpt-t-integration = { path = "crates/tpt-t-integration" }
 
 # Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
 # Members gate these behind [target.'cfg(...)'.dependencies] as needed;

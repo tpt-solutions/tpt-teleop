@@ -421,7 +421,6 @@ mod tests {
 
     #[test]
     fn address_flapping_is_rate_limited() {
-        let mut t = NeighborTable::with_capacity(8);
         let cfg = MeshConfig {
             max_clock_skew_ns: 30_000_000_000,
             flap_cooldown_ns: 2_000_000_000,

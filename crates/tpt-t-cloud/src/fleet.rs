@@ -18,9 +18,9 @@ use tpt_t_core::mode::{Mode, TransitionTable};
 use tpt_t_core::ser::{AlignedBuf, ControlCommand, serialize_into};
 use tpt_t_ring::SpscRing;
 
+use tpt_t_link::mux::secure_inner;
 use tpt_t_sec::cipher::{CipherSuite, CryptoBox};
 use tpt_t_sec::link::AAD_CONTROL;
-use tpt_t_link::mux::secure_inner;
 
 use crate::error::{CloudError, transport_err};
 use crate::json::Json;

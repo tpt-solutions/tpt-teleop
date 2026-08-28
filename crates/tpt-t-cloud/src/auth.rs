@@ -10,11 +10,11 @@
 
 use crate::http::Request;
 use crate::json::Json;
+use tpt_t_sec::FleetAuthz;
 use tpt_t_sec::cipher::CipherSuite;
 use tpt_t_sec::identity::Attestation;
 use tpt_t_sec::rbac::Principal;
 use tpt_t_sec::session::{HandshakeInit, HandshakeResp};
-use tpt_t_sec::FleetAuthz;
 
 /// Header scheme prefix for the attestation bearer.
 const SCHEME: &str = "TPT-Attestation ";
@@ -110,7 +110,10 @@ pub fn handshake_resp_to_json(resp: &HandshakeResp) -> Json {
 /// Builds the `Authorization: TPT-Attestation <HEX(Attestation::to_bytes())>`
 /// header value for a verified [`Attestation`] (used by clients and tests).
 pub fn attestation_header(att: &Attestation) -> String {
-    format!("Authorization: TPT-Attestation {}", hex_encode(&att.to_bytes()))
+    format!(
+        "Authorization: TPT-Attestation {}",
+        hex_encode(&att.to_bytes())
+    )
 }
 
 /// Minimal constant-time-ish hex decoder (uppercase/lowercase, even length).

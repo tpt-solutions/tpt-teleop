@@ -33,7 +33,10 @@ pub mod sfu;
 
 pub use auth::{authenticate_request, authorize_tool, extract_attestation};
 pub use error::CloudError;
-pub use fleet::{CapturingTransport, Fleet, NullTransport, SecureUdpTransport, UdpTransport, UnitState, UnitTransport};
+pub use fleet::{
+    CapturingTransport, Fleet, NullTransport, SecureUdpTransport, UdpTransport, UnitState,
+    UnitTransport,
+};
 pub use http::{Method, Request, Response};
 pub use json::Json;
 pub use mcp::McpServer;

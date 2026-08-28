@@ -14,6 +14,12 @@ path = "src/main.rs"
 
 [dependencies]
 tpt-t-core = { workspace = true }
+tpt-t-analytics = { workspace = true }
+tpt-t-cloud = { workspace = true }
+tpt-t-input = { workspace = true }
+tpt-t-safety = { workspace = true }
+tpt-t-hal = { workspace = true }
+tpt-t-integration = { workspace = true }
 
 [lints]
 workspace = true

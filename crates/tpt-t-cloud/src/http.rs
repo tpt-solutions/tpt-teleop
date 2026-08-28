@@ -172,6 +172,11 @@ impl Response {
         Self::with_body(code, "text/plain; charset=utf-8", body.as_bytes().to_vec())
     }
 
+    /// Builds an HTML response.
+    pub fn html(code: u16, body: &str) -> Self {
+        Self::with_body(code, "text/html; charset=utf-8", body.as_bytes().to_vec())
+    }
+
     /// Builds a response carrying a body with the given content type.
     pub fn with_body(code: u16, content_type: &str, body: Vec<u8>) -> Self {
         Self {

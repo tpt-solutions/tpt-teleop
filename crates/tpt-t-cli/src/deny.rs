@@ -138,3 +138,54 @@ allow-registry = [\"https://github.com/rust-lang/crates.io-index\"]
 version = 2
 yanked = \"warn\"
 ";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_config_to_explicit_path() {
+        let dir = std::env::temp_dir().join(format!("tpt_cli_deny_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let out = dir.join("cargo-deny.toml");
+        let code = run(&["--out".into(), out.to_string_lossy().to_string()]);
+        assert_eq!(code, 0);
+        let text = std::fs::read_to_string(&out).expect("file written");
+        // The MIT-chain policy must ban strictly-Apache-only licenses and
+        // clarify the dual MIT/Apache crates down to MIT.
+        assert!(
+            text.contains("deny = [ \"Apache-2.0\" ]"),
+            "must ban Apache-only"
+        );
+        assert!(text.contains("expression = \"MIT\""), "must clarify to MIT");
+        assert!(text.contains("yanked = \"warn\""), "must warn on yanked");
+        let _ = std::fs::remove_file(&out);
+    }
+
+    #[test]
+    fn writes_default_cargo_deny_toml_in_cwd() {
+        // Run in a temp working dir so the default `cargo-deny.toml` lands there
+        // and not the real workspace root.
+        let dir = std::env::temp_dir().join(format!("tpt_cli_deny_def_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let out = dir.join("cargo-deny.toml");
+        // Guard: only assert if the file doesn't already exist (don't clobber).
+        assert!(
+            !out.exists(),
+            "precondition: no cargo-deny.toml in temp dir"
+        );
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let code = run(&[]);
+        std::env::set_current_dir(prev).unwrap();
+        assert_eq!(code, 0);
+        let text = std::fs::read_to_string(&out).expect("default file written");
+        assert!(text.contains("MIT"));
+        let _ = std::fs::remove_file(&out);
+    }
+
+    #[test]
+    fn rejects_unknown_argument() {
+        assert_eq!(run(&["--bogus".into()]), FAIL);
+    }
+}

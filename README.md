@@ -9,17 +9,62 @@ thread-per-core pinning, and raw OS interfaces all the way down.
 
 ## Status
 
-🔧 **Phase 14 — Integration, Benchmarking & Release** in progress. All
-feature phases (0–13) are implemented, `cargo test`/`clippy`/`fmt` are clean
-across the workspace, and the MIT-chain dependency audit passes. Phase 14 adds
-the full end-to-end pipeline test, allocation/lock verification tooling, the
-cross-subsystem benchmark suite, and the final release audit. See
-[`todo.md`](todo.md) for the live checklist and
-[`docs/quickstart.md`](docs/quickstart.md) for the macro-driven quick start.
+✅ **v1.0.0 released.** All feature phases (0–14) are implemented and verified:
+`cargo test`/`clippy`/`fmt` are clean across the workspace, the MIT-chain
+dependency audit passes, and the full end-to-end pipeline is proven to make no
+per-command heap allocations and take no locks on the hot path. Phase 15 wired
+the `tpt-t-sec` crypto/RBAC stack into the live `tpt-t-cloud`/`tpt-t-link`
+runtime, and Phase 16/17 add the adoption tooling (scaffold tests, `doctor`,
+`sim`, live fleet dashboard, examples) described in [`todo.md`](todo.md).
 
 | CI | Lint | Deps |
 |----|------|------|
-| ![build](https://github.com/tpt-solutions/tpt-teleop/actions/workflows/ci.yml/badge.svg) | ![lint](https://github.com/tpt-solutions/tpt-teleop/actions/workflows/lint.yml/badge.svg) | ![deny](https://github.com/tpt-solutions/tpt-teleop/actions/workflows/deny.yml/badge.svg) |
+| ![build](https://github.com/tpt-solutions/tpt-teleop/actions/workflows/ci.yml/badge.svg) | ![lint](https://github.com/tpt-solutions/tpt-teleop/actions/workflows/lint.yml/badge.svg) | cargo-deny (see `deny.toml`) |
+
+> **No system dependencies required.** Everything builds from a stock Rust
+> toolchain (`rustc`/`cargo`, edition 2024). There are no C system libraries to
+> install: hardware backends (V4L2, SocketCAN, DirectShow, NVENC, …) are reached
+> through in-house `libc`/Windows FFI and fail loudly with `Unsupported` until
+> hardware bring-up, so the workspace compiles and tests cleanly on a fresh
+> Linux, macOS, or Windows machine.
+
+## Getting Started
+
+```bash
+# 1. Clone
+git clone https://github.com/tpt-solutions/tpt-teleop.git
+cd tpt-teleop
+
+# 2. Build the whole workspace (no external system libs needed)
+cargo build --workspace
+
+# 3. Run the test suite
+cargo test --workspace
+
+# 4. Lint + license audit (CI parity)
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --check
+cargo deny check
+
+# 5. Scaffold a new robot crate and build it
+cargo run -p tpt-t-cli -- scaffold my_bot
+cd my_bot
+cargo build
+```
+
+The `tpt-t-cli` developer tool also provides:
+
+* `cargo run -p tpt-t-cli -- deny` — emit a `cargo-deny.toml` for the MIT-chain policy.
+* `cargo run -p tpt-t-cli -- profile --cores 8` — emit a CPU core-pinning profile.
+* `cargo run -p tpt-t-cli -- doctor` — verify the toolchain/environment.
+* `cargo run -p tpt-t-cli -- sim --ticks 200` — live simulator readout (Phase-4 drone + safety loop).
+* `cargo run -p tpt-t-cli -- replay <fdr.bin>` — offline FDR replay.
+* `cargo run -p tpt-t-cli -- console --host 127.0.0.1:8080` — MCP fleet-dispatch console.
+
+See [`docs/quickstart.md`](docs/quickstart.md) for the `#[derive(tpt_t::Robot)]`
+macro quick start, [`docs/phase14-validation.md`](docs/phase14-validation.md) for
+the verification + benchmark numbers, and [`todo.md`](todo.md) for the live
+roadmap.
 
 ## Workspace Crates
 
@@ -32,18 +77,18 @@ cross-subsystem benchmark suite, and the final release audit. See
 | `tpt-t-media` | Zero-copy camera ingestion, slab allocator, HW encode |
 | `tpt-t-safety` | Geofencing, kinematic limits, emergency overrides (RT thread) |
 | `tpt-t-hal` | Hardware abstraction: SocketCAN, MAVLink, memory-mapped I/O |
-| `tpt-t-cloud` | Custom HTTP/3 fleet server, WebRTC SFU, session recording |
+| `tpt-t-cloud` | Custom HTTP/1.1 fleet server, WebRTC SFU, session recording |
 | `tpt-t-sec` | Zero-trust access control, E2EE via `ring`, RBAC |
 | `tpt-t-analytics` | O_DIRECT flight data recorder, AI training export |
-| `tpt-t-cli` | Project scaffolding, cargo-deny config, core-pinning profiles |
+| `tpt-t-cli` | Project scaffolding, cargo-deny config, core-pinning profiles, `sim`/`doctor` |
 | `tpt-t-integration` | Phase 14: full-pipeline E2E, zero-alloc/zero-lock verification, benchmarks |
 
 ## The Zero-Copy Data Path
 
 ```
 HID report ──Ingest──▶ Normalize ──Route──▶ Safety loop (in-place)
-                                                       │
-                                              Serialize ──▶ Transmit ──▶ wire
+                                                        │
+                                               Serialize ──▶ Transmit ──▶ wire
 Total allocations (steady state): 0        Total mutex locks: 0
 ```
 

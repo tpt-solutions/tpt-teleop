@@ -695,7 +695,13 @@ dependencies = [
 name = "tpt-t-cli"
 version = "1.0.0"
 dependencies = [
+ "tpt-t-analytics",
+ "tpt-t-cloud",
  "tpt-t-core",
+ "tpt-t-hal",
+ "tpt-t-input",
+ "tpt-t-integration",
+ "tpt-t-safety",
 ]
 
 [[package]]

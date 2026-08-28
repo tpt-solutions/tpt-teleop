@@ -57,7 +57,13 @@ impl SecureMux {
     ) -> io::Result<usize> {
         let mut scratch = AlignedBuf::new();
         let n = serialize_into(cmd, &mut scratch).map_err(io::Error::other)?;
-        self.send_sealed(&scratch[..n], AAD_CONTROL, secure_inner::CONTROL, dst, now_ns)
+        self.send_sealed(
+            &scratch[..n],
+            AAD_CONTROL,
+            secure_inner::CONTROL,
+            dst,
+            now_ns,
+        )
     }
 
     /// Seals a telemetry packet and transmits it to `dst`.
@@ -69,7 +75,13 @@ impl SecureMux {
     ) -> io::Result<usize> {
         let mut scratch = AlignedBuf::new();
         let n = serialize_into(pkt, &mut scratch).map_err(io::Error::other)?;
-        self.send_sealed(&scratch[..n], AAD_TELEMETRY, secure_inner::TELEMETRY, dst, now_ns)
+        self.send_sealed(
+            &scratch[..n],
+            AAD_TELEMETRY,
+            secure_inner::TELEMETRY,
+            dst,
+            now_ns,
+        )
     }
 
     /// Seals arbitrary plaintext and transmits it on the secure channel.

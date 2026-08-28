@@ -28,14 +28,16 @@ struct Command {
 
 struct Camera(Arc<AtomicBool>);
 impl RobotDevice for Camera {
-    fn run(self) {
+    type Channels = BotChannels;
+    fn run(self, _channels: &BotChannels) {
         self.0.store(true, Ordering::SeqCst);
     }
 }
 
 struct Motor(Arc<AtomicBool>);
 impl RobotDevice for Motor {
-    fn run(self) {
+    type Channels = BotChannels;
+    fn run(self, _channels: &BotChannels) {
         self.0.store(true, Ordering::SeqCst);
     }
 }

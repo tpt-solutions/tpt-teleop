@@ -244,7 +244,11 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             {
                 let role = #role;
                 let cores = profile.cores_for(role);
-                let f = move || { tpt_t_core::robot::RobotDevice::run(#ident); };
+                // Share the channel bundle across device threads; each ring is
+                // SPSC so a distinct producer/consumer per ring keeps the
+                // lock-free contract intact even under `&Channels`.
+                let ch = ::std::sync::Arc::clone(&channels);
+                let f = move || { tpt_t_core::robot::RobotDevice::run(#ident, &ch); };
                 let handle = if <Self>::THREAD_PER_CORE {
                     tpt_t_core::affinity::spawn_pinned(#fname, cores, f)?
                 } else {
@@ -321,10 +325,16 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             /// core-profile role when `thread_per_core` is set) and runs it.
             ///
             /// Consumes `self`: each device is moved into its own thread via
-            /// [`RobotDevice::run`](tpt_t_core::robot::RobotDevice::run).
+            /// [`RobotDevice::run`](tpt_t_core::robot::RobotDevice::run), which
+            /// receives a shared (`Arc`) view of the generated channel bundle so
+            /// devices can push/pop real data on their rings.
             pub fn launch(self, profile: &tpt_t_core::profile::CoreProfile)
                 -> ::std::io::Result<::std::vec::Vec<::std::thread::JoinHandle<()>>>
             {
+                // Build the channel bundle once and share it (immutably) across
+                // every device thread; each ring is SPSC so the per-ring
+                // producer/consumer invariants are preserved.
+                let channels = ::std::sync::Arc::new(self.channels());
                 let #name { #(#launch_dests,)* .. } = self;
                 let mut handles: ::std::vec::Vec<::std::thread::JoinHandle<()>> =
                     ::std::vec::Vec::new();

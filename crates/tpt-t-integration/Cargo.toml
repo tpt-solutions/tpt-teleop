@@ -23,5 +23,17 @@ tpt-t-macros = { workspace = true }
 name = "pipeline_bench"
 harness = false
 
+[[example]]
+name = "pipeline_demo"
+path = "examples/pipeline_demo.rs"
+
+[[example]]
+name = "sim_drone"
+path = "examples/sim_drone.rs"
+
+[[example]]
+name = "safety_clamp"
+path = "examples/safety_clamp.rs"
+
 [lints]
 workspace = true
