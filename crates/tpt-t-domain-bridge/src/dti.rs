@@ -43,14 +43,16 @@ pub enum DomainError {
         /// State the session was in when the command arrived.
         state: crate::HandoverState,
     },
-    /// The domain adapter failed to carry out a request.
-    Adapter(String),
+    /// The domain adapter failed to carry out a request. The message is static,
+    /// so building the error does not allocate. That keeps the DTI hooks
+    /// allocation-free on their error paths too.
+    Adapter(&'static str),
 }
 
 impl DomainError {
     /// Convenience constructor for adapter implementations.
-    pub fn adapter(msg: impl Into<String>) -> Self {
-        Self::Adapter(msg.into())
+    pub const fn adapter(msg: &'static str) -> Self {
+        Self::Adapter(msg)
     }
 }
 

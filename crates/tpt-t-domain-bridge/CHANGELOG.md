@@ -7,6 +7,12 @@ project history.
 
 ## [Unreleased]
 
+### Changed (breaking)
+- `DomainError::Adapter` now holds a `&'static str` instead of a `String`, and
+  `DomainError::adapter` takes `&'static str`. Building an adapter error no
+  longer allocates, so the DTI hooks stay allocation-free on their error paths.
+  Adapters that formatted dynamic messages must use a fixed message instead.
+
 ## [1.0.0] — 2026-08-27
 
 ### Added
