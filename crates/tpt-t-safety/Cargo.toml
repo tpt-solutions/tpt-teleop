@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Deterministic RT safety loop: geofencing, kinematic limits, emergency overrides (tpt-teleop)"
+readme = "README.md"
+keywords = ["safety", "geofence", "realtime", "kinematics", "teleoperation"]
+categories = ["science::robotics", "algorithms"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

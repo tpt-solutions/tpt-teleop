@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Zero-copy camera ingestion, slab frame pools, hardware-accelerated encoding, AR HUD burn-in (tpt-teleop)"
+readme = "README.md"
+keywords = ["video", "camera", "encoder", "telemetry", "teleoperation"]
+categories = ["multimedia::video", "multimedia::encoding", "science::robotics"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Central state machine, lock-free message bus, platform event loops, thread pinning, and zero-copy wire types for tpt-teleop"
+readme = "README.md"
+keywords = ["teleoperation", "lock-free", "zero-copy", "event-loop", "realtime"]
+categories = ["concurrency", "science::robotics", "os"]
 
 [dependencies]
 tpt-t-ring = { workspace = true }

@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Raw HID controller polling, OpenXR hand tracking, haptics (tpt-teleop)"
+readme = "README.md"
+keywords = ["gamepad", "hid", "openxr", "haptics", "teleoperation"]
+categories = ["hardware-support", "science::robotics"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

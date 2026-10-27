@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Hardware abstraction layer: motors, sensors, CAN bus, cameras; mock physics simulator backend (tpt-teleop)"
+readme = "README.md"
+keywords = ["hal", "can-bus", "mavlink", "simulator", "robotics"]
+categories = ["embedded", "hardware-support", "science::robotics"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

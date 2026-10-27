@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Ergonomic proc-macro scaffolding for tpt-teleop robots: #[derive(Robot)] with #[robot]/#[camera]/#[motor] codegen"
+readme = "README.md"
+keywords = ["proc-macro", "robot", "derive", "codegen", "teleoperation"]
+categories = ["development-tools::procedural-macro-helpers", "science::robotics"]
 
 [lib]
 name = "tpt_t"

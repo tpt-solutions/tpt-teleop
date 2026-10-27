@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Domain Teleoperation Interface (DTI): the universal adapter trait, wire types and autonomy handover lifecycle that every domain repo implements (tpt-teleop)"
+readme = "README.md"
+keywords = ["teleoperation", "autonomy", "handover", "robotics", "adapter"]
+categories = ["science::robotics", "rust-patterns"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

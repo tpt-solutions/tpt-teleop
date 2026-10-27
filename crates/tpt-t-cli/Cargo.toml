@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Project scaffolding, cargo-deny config generation, and CPU core-pinning profile setup (tpt-teleop)"
+readme = "README.md"
+keywords = ["teleoperation", "cli", "scaffolding", "cargo-deny", "robotics"]
+categories = ["command-line-utilities", "development-tools", "science::robotics"]
 
 [[bin]]
 name = "tpt-t-cli"

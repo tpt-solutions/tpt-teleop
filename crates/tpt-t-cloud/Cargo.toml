@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Fleet management server, WebRTC SFU, session recording and MCP dispatch for tpt-teleop (in-house; no hyper/axum/tokio, no Apache-only transports)"
+readme = "README.md"
+keywords = ["teleoperation", "fleet", "webrtc", "mcp", "http-server"]
+categories = ["network-programming", "web-programming::http-server", "science::robotics"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

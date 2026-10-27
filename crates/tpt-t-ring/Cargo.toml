@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Wait-free SPSC ring buffers with zero-copy pointer passing and byte-to-struct casting for tpt-teleop"
+readme = "README.md"
+keywords = ["spsc", "ring-buffer", "lock-free", "zero-copy", "wait-free"]
+categories = ["concurrency", "data-structures"]
 
 [lints]
 workspace = true

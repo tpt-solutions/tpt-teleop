@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "End-to-end pipeline integration, zero-alloc/zero-lock verification tooling, and cross-subsystem benchmark suite (tpt-teleop Phase 14)"
+readme = "README.md"
+keywords = ["teleoperation", "benchmarks", "pipeline", "zero-alloc", "realtime"]
+categories = ["development-tools::testing", "science::robotics"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

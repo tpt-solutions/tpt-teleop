@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Direct-I/O flight data recorder and AI training pipeline export (tpt-teleop)"
+readme = "README.md"
+keywords = ["teleoperation", "flight-recorder", "direct-io", "ai-training", "numpy"]
+categories = ["science::robotics", "filesystem"]
 
 [dependencies]
 tpt-t-core = { workspace = true }

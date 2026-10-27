@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 description = "Zero-trust security model, RBAC, E2EE via RustCrypto AES-GCM / ChaCha20-Poly1305 (tpt-teleop)"
+readme = "README.md"
+keywords = ["zero-trust", "rbac", "e2ee", "aead", "x25519"]
+categories = ["cryptography", "network-programming"]
 
 [dependencies]
 tpt-t-core = { workspace = true }
