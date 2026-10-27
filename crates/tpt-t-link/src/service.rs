@@ -347,10 +347,17 @@ impl ServiceCore {
                     })
                     .is_ok()
                 {
-                    let _ = uring.submit_staged();
-                    uring.reap(|_| {});
-                    crate::mux::LinkStats::bump(&self.mux.stats.tx_frames);
-                    return Ok(buf.len());
+                    // Wait for the send to complete so a kernel-side failure is
+                    // seen here and retried on the socket path, rather than
+                    // silently dropped with the completion error ignored.
+                    let mut failed = false;
+                    let submitted = matches!(uring.submit_staged(), Ok(1));
+                    let completed = submitted && uring.wait(uring.inflight()).is_ok();
+                    uring.reap(|_| failed = true);
+                    if completed && !failed {
+                        crate::mux::LinkStats::bump(&self.mux.stats.tx_frames);
+                        return Ok(buf.len());
+                    }
                 }
                 // Slot exhaustion (or any stage failure) falls through to the
                 // socket path, which applies its own backpressure accounting.
