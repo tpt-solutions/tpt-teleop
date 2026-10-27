@@ -74,12 +74,9 @@ pub fn pin_current(cores: &[usize]) -> Result<(), AffinityError> {
         return Err(AffinityError::NoCores);
     }
 
-    #[cfg(any(target_os = "linux", windows))]
-    {
-        let max = core_count();
-        if let Some(&c) = cores.iter().find(|&&c| c >= max) {
-            return Err(AffinityError::OutOfRange { core: c, max });
-        }
+    let max = core_count();
+    if let Some(&c) = cores.iter().find(|&&c| c >= max) {
+        return Err(AffinityError::OutOfRange { core: c, max });
     }
 
     #[cfg(target_os = "linux")]
@@ -134,13 +131,15 @@ fn pin_macos(cores: &[usize]) -> Result<(), AffinityError> {
         // Drop out of timeshare first (RT-style priority hint).
         let mut timeshare: [i32; 1] = [0]; // 0 => not timesharing
         let kr = thread_policy_set(port, THREAD_EXTENDED_POLICY, timeshare.as_mut_ptr(), 1);
-        if kr != 0 {
+        if kr != 0 && kr != KERN_NOT_SUPPORTED {
             return Err(AffinityError::Mach(kr));
         }
         for &c in cores {
             let mut tag: [i32; 1] = [c as i32 + 1]; // affinity tag 0 = none
             let kr = thread_policy_set(port, THREAD_AFFINITY_POLICY, tag.as_mut_ptr(), 1);
-            if kr != 0 {
+            // Apple Silicon rejects affinity tags with KERN_NOT_SUPPORTED; the
+            // hint is advisory on Darwin, so that is not an error.
+            if kr != 0 && kr != KERN_NOT_SUPPORTED {
                 return Err(AffinityError::Mach(kr));
             }
         }
@@ -154,6 +153,8 @@ fn pin_macos(cores: &[usize]) -> Result<(), AffinityError> {
 const THREAD_EXTENDED_POLICY: u32 = 1;
 #[cfg(target_os = "macos")]
 const THREAD_AFFINITY_POLICY: u32 = 4;
+#[cfg(target_os = "macos")]
+const KERN_NOT_SUPPORTED: i32 = 46;
 
 #[cfg(target_os = "macos")]
 // SAFETY: declarations match <mach/thread_policy.h> exactly.

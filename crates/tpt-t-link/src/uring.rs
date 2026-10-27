@@ -246,10 +246,12 @@ mod tests {
     use super::*;
     use std::net::UdpSocket;
 
+    /// A bound receiver plus its address, so datagrams sent there land on a
+    /// live socket instead of a closed port.
     fn loopback_pair() -> io::Result<(UdpSocket, SocketAddr)> {
         let rx = UdpSocket::bind(("127.0.0.1", 0))?;
-        let tx = UdpSocket::bind(("127.0.0.1", 0))?;
-        Ok((rx, tx.local_addr()?))
+        let addr = rx.local_addr()?;
+        Ok((rx, addr))
     }
 
     /// Builds a ring for `sock`, or `None` where io_uring is unavailable
@@ -272,8 +274,9 @@ mod tests {
 
     #[test]
     fn uring_loopback_roundtrip_and_slot_recycling() {
-        let (rx, peer_a) = loopback_pair().expect("loopback UDP");
-        let (tx_sock, peer_b) = loopback_pair().expect("loopback UDP");
+        let (rx_a, peer_a) = loopback_pair().expect("loopback UDP");
+        let (rx_b, peer_b) = loopback_pair().expect("loopback UDP");
+        let tx_sock = UdpSocket::bind(("127.0.0.1", 0)).expect("loopback UDP");
         let Some(mut ring) = try_ring(&tx_sock, 4) else {
             return;
         };
@@ -300,15 +303,14 @@ mod tests {
         assert_eq!(ring.available(), 4);
 
         // Both receivers got their datagram with intact payloads.
-        rx.set_read_timeout(Some(std::time::Duration::from_secs(2)))
-            .unwrap();
         let mut buf = [0u8; 64];
-        let (n, _) = rx.recv_from(&mut buf).expect("datagram A");
-        assert_eq!(&buf[..n], b"hello");
-        tx_sock
-            .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+        rx_a.set_read_timeout(Some(std::time::Duration::from_secs(2)))
             .unwrap();
-        let (n, _) = tx_sock.recv_from(&mut buf).expect("datagram B");
+        let (n, _) = rx_a.recv_from(&mut buf).expect("datagram A");
+        assert_eq!(&buf[..n], b"hello");
+        rx_b.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        let (n, _) = rx_b.recv_from(&mut buf).expect("datagram B");
         assert_eq!(&buf[..n], b"world");
     }
 
