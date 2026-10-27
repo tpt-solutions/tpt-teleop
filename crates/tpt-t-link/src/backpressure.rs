@@ -220,6 +220,9 @@ impl Backpressure {
         if gained > 0 {
             // Bucket size: one second of link capacity (burst allowance).
             let burst_cap = cap_bps / 8 * TOKEN_SCALE;
+            // `fetch_update` is deprecated in favour of `try_update` (stable
+            // since 1.95), but the crate's MSRV is 1.85, so keep it for now.
+            #[allow(deprecated)]
             let _ = self
                 .tokens
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |t| {
@@ -231,9 +234,11 @@ impl Backpressure {
     /// Attempts to spend `bytes` of bandwidth credit at `now_ns`.
     /// Returns `false` (and counts a drop) when the bucket is empty — the
     /// caller should shed non-critical traffic (telemetry/media first).
+    #[allow(deprecated)] // `fetch_update`: see `refill`.
     pub fn admit(&self, bytes: usize, now_ns: u64) -> bool {
         self.refill(now_ns);
         let want = (bytes as u64).saturating_mul(TOKEN_SCALE);
+        // See the note in `refill` on keeping `fetch_update` for the 1.85 MSRV.
         match self
             .tokens
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |t| {

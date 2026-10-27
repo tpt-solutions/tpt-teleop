@@ -62,8 +62,9 @@ impl SocketCan {
             unsafe { libc::close(fd) };
             return Err(HalError::Device("bind(AF_CAN) failed"));
         }
-        // SAFETY: fd valid; F_GETFL/F_SETFL with O_NONBLOCK are safe.
+        // SAFETY: fd valid; F_GETFL takes no pointer arguments.
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        // SAFETY: fd valid; F_SETFL with O_NONBLOCK takes an int argument.
         unsafe { libc::fcntl(fd, libc::F_SETFL, flags | O_NONBLOCK) };
         Ok(Self { fd })
     }

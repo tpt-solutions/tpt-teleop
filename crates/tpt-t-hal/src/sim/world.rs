@@ -203,12 +203,8 @@ impl World {
                 }
             }
         }
-        for f in &mut self.force {
-            *f = [0.0; 3];
-        }
-        for t in &mut self.torque {
-            *t = [0.0; 3];
-        }
+        self.force.fill([0.0; 3]);
+        self.torque.fill([0.0; 3]);
     }
 
     /// Immutable state access.

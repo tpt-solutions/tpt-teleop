@@ -108,6 +108,8 @@ mod imp {
 
             // Preferred: open with direct I/O (O_DIRECT on Linux; no-op flag on
             // macOS where we instead use fcntl(F_NOCACHE) below).
+            // SAFETY: `c` is a valid NUL-terminated path that outlives this call;
+            // open(2) has no other preconditions.
             let direct = unsafe {
                 libc::open(
                     c.as_ptr(),
@@ -126,6 +128,7 @@ mod imp {
 
             // Fallback: some filesystems reject O_DIRECT. Retry buffered so the
             // recorder still works (e.g. on CI tmpfs); report degraded mode.
+            // SAFETY: same as above; `c` is a valid NUL-terminated path.
             let buffered = unsafe {
                 libc::open(
                     c.as_ptr(),

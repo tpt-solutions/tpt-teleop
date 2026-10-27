@@ -118,6 +118,8 @@ impl Mmio for LinuxMmio {
 #[cfg(target_os = "linux")]
 impl Drop for LinuxMmio {
     fn drop(&mut self) {
+        // SAFETY: ptr/size came from a successful mmap and fd is owned by this
+        // struct, so each is unmapped/closed exactly once here.
         unsafe {
             libc::munmap(self.ptr as *mut libc::c_void, self.size);
             libc::close(self.fd);
