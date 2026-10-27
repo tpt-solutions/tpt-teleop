@@ -58,7 +58,7 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 [advisories]
 version = 2
 # A yanked crate can silently pull a compromised version; fail the audit rather
-# than warn. Severity threshold set so any real vulnerability fails CI.
+# than warn. cargo-deny 0.20+ fails CI on any vulnerability advisory by default
+# (the severity-threshold key was removed).
 yanked = "deny"
-severity = "medium"
 ignore = []
