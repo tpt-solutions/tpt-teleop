@@ -8,9 +8,10 @@
 //! outstanding), which feeds the same congestion estimator as everything
 //! else.
 //!
-//! Uses plain [`opcode::Send`] with an explicit destination address
-//! (send(2)-with-addr semantics, kernels ≥ 5.6). Upgrading to
-//! `opcode::SendZc` (true zero-copy, ≥ 5.19) is a drop-in change gated on a
+//! Uses [`opcode::SendMsg`] (sendmsg(2), kernels ≥ 5.3) with the destination
+//! carried in a per-slot `msghdr`. Plain `IORING_OP_SEND` cannot take a
+//! destination address and fails with `EINVAL`. Upgrading to
+//! `opcode::SendMsgZc` (true zero-copy) is a drop-in change gated on a
 //! runtime `Probe` check — deliberately deferred so v1 runs everywhere.
 
 #![cfg(target_os = "linux")]
@@ -48,6 +49,10 @@ struct Slot {
     len: usize,
     addr: libc::sockaddr_storage,
     addr_len: libc::socklen_t,
+    // Kernel-read descriptors for the SENDMSG SQE. They live in the slot so
+    // the pointers stay valid until the completion is reaped.
+    iov: libc::iovec,
+    msg: libc::msghdr,
     next_free: u16, // freelist link while Free
 }
 
@@ -90,6 +95,13 @@ impl UringTx {
                 // overwritten by fill_sockaddr before any kernel read.
                 addr: unsafe { std::mem::zeroed() },
                 addr_len: 0,
+                iov: libc::iovec {
+                    iov_base: core::ptr::null_mut(),
+                    iov_len: 0,
+                },
+                // SAFETY: msghdr is plain-old-data; rewritten in submit_staged
+                // before the kernel ever reads it.
+                msg: unsafe { std::mem::zeroed() },
                 next_free,
             });
         }
@@ -150,14 +162,25 @@ impl UringTx {
             if self.slots[idx].state != SlotState::Staged {
                 continue;
             }
-            let slot = &self.slots[idx];
-            let entry = opcode::Send::new(
+            let slot = &mut self.slots[idx];
+            // IORING_OP_SEND cannot carry a destination address (the kernel
+            // rejects it with EINVAL), so send through SENDMSG with the
+            // address in a msghdr. The msghdr and iovec are slot-owned.
+            slot.iov = libc::iovec {
+                iov_base: slot.buf.as_mut_ptr().cast(),
+                iov_len: slot.len,
+            };
+            // SAFETY: msghdr is plain-old-data; every field the kernel reads
+            // is set on the next lines.
+            slot.msg = unsafe { std::mem::zeroed() };
+            slot.msg.msg_name = core::ptr::addr_of_mut!(slot.addr).cast();
+            slot.msg.msg_namelen = slot.addr_len;
+            slot.msg.msg_iov = core::ptr::addr_of_mut!(slot.iov);
+            slot.msg.msg_iovlen = 1;
+            let entry = opcode::SendMsg::new(
                 io_uring::types::Fd(self.fd), // raw fd, not a registered file
-                slot.buf.as_ptr(),
-                slot.len as u32,
+                core::ptr::addr_of!(slot.msg),
             )
-            .dest_addr(&slot.addr as *const libc::sockaddr_storage as *const libc::sockaddr)
-            .dest_addr_len(slot.addr_len)
             .build()
             .user_data(idx as u64);
 
