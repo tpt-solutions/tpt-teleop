@@ -298,7 +298,10 @@ mod tests {
         ring.wait(2).unwrap();
         let mut errors = Vec::new();
         assert_eq!(ring.reap(|e| errors.push(e)), 2);
-        assert!(errors.is_empty());
+        assert!(
+            errors.is_empty(),
+            "send CQEs returned negative results (-errno): {errors:?}"
+        );
         assert_eq!(ring.inflight(), 0);
         assert_eq!(ring.available(), 4);
 
