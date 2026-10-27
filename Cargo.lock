@@ -725,6 +725,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-t-domain-bridge"
+version = "1.0.0"
+dependencies = [
+ "rkyv",
+ "tpt-t-core",
+]
+
+[[package]]
 name = "tpt-t-hal"
 version = "1.0.0"
 dependencies = [

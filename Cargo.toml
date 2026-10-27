@@ -32,6 +32,7 @@ tpt-t-sec = { path = "crates/tpt-t-sec" }
 tpt-t-analytics = { path = "crates/tpt-t-analytics" }
 tpt-t-macros = { path = "crates/tpt-t-macros" }
 tpt-t-integration = { path = "crates/tpt-t-integration" }
+tpt-t-domain-bridge = { path = "crates/tpt-t-domain-bridge" }
 
 # Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
 # Members gate these behind [target.'cfg(...)'.dependencies] as needed;
