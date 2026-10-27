@@ -249,7 +249,8 @@ fn fill_sockaddr(ss: &mut libc::sockaddr_storage, len: &mut libc::socklen_t, pee
                 unsafe { &mut *(ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in) };
             sin.sin_family = libc::AF_INET as libc::sa_family_t;
             sin.sin_port = peer.port().to_be();
-            sin.sin_addr.s_addr = u32::from_be_bytes(v4.octets());
+            // Network byte order: the octets are copied as-is into memory.
+            sin.sin_addr.s_addr = u32::from_ne_bytes(v4.octets());
             *len = size_of::<libc::sockaddr_in>() as libc::socklen_t;
         }
         std::net::IpAddr::V6(v6) => {
@@ -371,7 +372,7 @@ mod tests {
         let sin = unsafe { &*(std::ptr::addr_of!(ss) as *const libc::sockaddr_in) };
         assert_eq!(sin.sin_family as i32, libc::AF_INET);
         assert_eq!(sin.sin_port, 8080u16.to_be());
-        assert_eq!(sin.sin_addr.s_addr.to_be_bytes(), [127, 0, 0, 1]);
+        assert_eq!(sin.sin_addr.s_addr.to_ne_bytes(), [127, 0, 0, 1]);
 
         let v6: SocketAddr = "[::1]:9090".parse().unwrap();
         fill_sockaddr(&mut ss, &mut len, v6);
