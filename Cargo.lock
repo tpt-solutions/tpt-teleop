@@ -683,7 +683,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tpt-t-analytics"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-cli"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "tpt-t-analytics",
  "tpt-t-cloud",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-cloud"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-link",
@@ -716,7 +716,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-core"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "rkyv",
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-domain-bridge"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "rkyv",
  "tpt-t-core",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-hal"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "rkyv",
@@ -744,7 +744,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-input"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-integration"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-hal",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-link"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "io-uring",
  "libc",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-macros"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-media"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "tpt-t-core",
  "tpt-t-link",
@@ -801,11 +801,11 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-ring"
-version = "1.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "tpt-t-safety"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "tpt-t-core",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-t-sec"
-version = "1.0.0"
+version = "0.1.0"
 dependencies = [
  "aead",
  "aes-gcm",
