@@ -3,11 +3,15 @@
 All notable changes to tpt-teleop are documented here. The project follows
 semantic versioning; the workspace is released as a single `vX.Y.Z` tag.
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
-First production release. The complete zero-copy, lock-free teleoperation
-middleware, cross-platform (Linux/macOS/Windows) and free of Apache-2.0-only
-dependencies (the "MIT chain" enforced by `deny.toml`).
+First release (pre-1.0; API not yet stable). The complete zero-copy, lock-free
+teleoperation middleware, cross-platform (Linux/macOS/Windows) and free of
+Apache-2.0-only dependencies (the "MIT chain" enforced by `deny.toml`).
+
+Versioning note: the workspace was briefly labelled `1.0.0` during development.
+It was reset to `0.1.0` before first publish, since the API is still changing
+and a 1.0.0 release would promise stability it does not yet have.
 
 ### Implemented phases (0–14)
 - **Foundation & tooling** — workspace, license metadata, `cargo-deny` policy, CI.
@@ -39,7 +43,7 @@ dependencies (the "MIT chain" enforced by `deny.toml`).
 - **Developer experience** — `#[derive(tpt_t::Robot)]` macro, `tpt-t-cli`
   scaffold/deny/profile, macro quick-start.
 - **Integration & release** — full-pipeline E2E, zero-alloc/zero-lock verification,
-  cross-subsystem benchmarks, tagged `v1.0.0`.
+  cross-subsystem benchmarks, tagged `v0.1.0`.
 
 ## [1.1.0] — 2026-08-28
 

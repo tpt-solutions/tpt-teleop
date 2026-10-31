@@ -14,7 +14,7 @@ history.
 - `FleetAuthz` and `Principal` gate the fleet API and MCP dispatch.
 - `SecureMux` is integrated with the link layer.
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - AEAD ciphers: AES-256-GCM and ChaCha20-Poly1305 (RustCrypto).

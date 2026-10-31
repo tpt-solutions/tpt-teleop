@@ -7,7 +7,7 @@ history.
 
 ## [Unreleased]
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - Slab allocator for video frames and sensor packets, with O(1) alloc and free.

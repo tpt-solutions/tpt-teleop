@@ -15,7 +15,7 @@ history.
 - Connection cap and idle sweep on `FleetServer` (Phase 15).
 - Live fleet dashboard at `GET /`, wired to the `/api/units/*` actions (Phase 17).
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - In-house HTTP/1.1 fleet server, with no `hyper`, `axum`, or `tokio`.

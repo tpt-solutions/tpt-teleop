@@ -7,7 +7,7 @@ project history.
 
 ## [Unreleased]
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - `PipelineHarness` for the full Ingest → Normalize → Route → Safety → Serialize → Transmit pipeline.

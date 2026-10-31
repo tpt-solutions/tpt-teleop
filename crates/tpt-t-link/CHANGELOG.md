@@ -16,7 +16,7 @@ history.
 - `SecureUdpTransport` runs encrypted per-peer sessions, bootstrapped through
   the cloud handshake endpoint (Phase 15).
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - Custom UDP multiplexer on one port, with control, telemetry, media, ICE, and mesh channels.

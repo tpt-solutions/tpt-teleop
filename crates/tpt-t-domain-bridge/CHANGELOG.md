@@ -13,7 +13,7 @@ project history.
   longer allocates, so the DTI hooks stay allocation-free on their error paths.
   Adapters that formatted dynamic messages must use a fixed message instead.
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - Domain Teleoperation Interface: the `DomainTeleopInterface` adapter trait,

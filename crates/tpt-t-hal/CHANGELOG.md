@@ -7,7 +7,7 @@ history.
 
 ## [Unreleased]
 
-## [1.0.0] — 2026-08-27
+## [0.1.0] — 2026-08-27
 
 ### Added
 - HAL traits for motors, sensors, CAN bus, and cameras.
