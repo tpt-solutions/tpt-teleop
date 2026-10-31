@@ -20,19 +20,19 @@ undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
 # Internal crates
-tpt-t-core = { path = "crates/tpt-t-core" }
-tpt-t-ring = { path = "crates/tpt-t-ring" }
-tpt-t-hal = { path = "crates/tpt-t-hal" }
-tpt-t-safety = { path = "crates/tpt-t-safety" }
-tpt-t-input = { path = "crates/tpt-t-input" }
-tpt-t-media = { path = "crates/tpt-t-media" }
-tpt-t-link = { path = "crates/tpt-t-link" }
-tpt-t-cloud = { path = "crates/tpt-t-cloud" }
-tpt-t-sec = { path = "crates/tpt-t-sec" }
-tpt-t-analytics = { path = "crates/tpt-t-analytics" }
-tpt-t-macros = { path = "crates/tpt-t-macros" }
-tpt-t-integration = { path = "crates/tpt-t-integration" }
-tpt-t-domain-bridge = { path = "crates/tpt-t-domain-bridge" }
+tpt-t-core = { version = "0.1.0", path = "crates/tpt-t-core" }
+tpt-t-ring = { version = "0.1.0", path = "crates/tpt-t-ring" }
+tpt-t-hal = { version = "0.1.0", path = "crates/tpt-t-hal" }
+tpt-t-safety = { version = "0.1.0", path = "crates/tpt-t-safety" }
+tpt-t-input = { version = "0.1.0", path = "crates/tpt-t-input" }
+tpt-t-media = { version = "0.1.0", path = "crates/tpt-t-media" }
+tpt-t-link = { version = "0.1.0", path = "crates/tpt-t-link" }
+tpt-t-cloud = { version = "0.1.0", path = "crates/tpt-t-cloud" }
+tpt-t-sec = { version = "0.1.0", path = "crates/tpt-t-sec" }
+tpt-t-analytics = { version = "0.1.0", path = "crates/tpt-t-analytics" }
+tpt-t-macros = { version = "0.1.0", path = "crates/tpt-t-macros" }
+tpt-t-integration = { version = "0.1.0", path = "crates/tpt-t-integration" }
+tpt-t-domain-bridge = { version = "0.1.0", path = "crates/tpt-t-domain-bridge" }
 
 # Platform (all dual MIT OR Apache-2.0 — see deny.toml MIT-chain policy).
 # Members gate these behind [target.'cfg(...)'.dependencies] as needed;
