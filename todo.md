@@ -49,7 +49,7 @@ is wired in. Fully cross-platform (Linux/macOS/Windows) is in scope for v1.
 > pipeline (p50 ≈ 6.9 µs, 137k cmd/s end-to-end). `docs/phase14-validation.md`
 > records the verification + benchmark numbers. `cargo test --workspace`,
 > `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
-> and `cargo deny check` are all green. Tagged **v1.0.0**.
+> and `cargo deny check` are all green. Tagged **v0.1.0**.
 
 ## Phase 0 — Foundation & Tooling
 
@@ -264,7 +264,7 @@ Goal: ergonomic macro-driven setup and project scaffolding tooling.
 
 ## Phase 14 — Integration, Benchmarking & Release
 
-Goal: verified end-to-end, zero-allocation, zero-lock data path; ready to tag v1.0.0.
+Goal: verified end-to-end, zero-allocation, zero-lock data path; ready to tag v0.1.0.
 
 - [x] Build full end-to-end test: Ingest → Normalize → Route → Safety → Serialize → Transmit
 - [x] Verify zero heap allocations in the hot path (allocation-counting tooling)
@@ -273,13 +273,13 @@ Goal: verified end-to-end, zero-allocation, zero-lock data path; ready to tag v1
 - [x] Build latency/jitter/throughput benchmark suite across all subsystems
 - [x] Write documentation pass + macro-driven quick-start guide
 - [x] Final license/cargo-deny audit before release
-- [x] Tag v1.0.0 release
+- [x] Tag v0.1.0 release
 
 ## Phase 15 — Security Hardening & Bug Fixes
 
 Goal: wire the already-built `tpt-t-sec` crypto/RBAC stack into the live
 `tpt-t-cloud`/`tpt-t-link` runtime paths (currently unauthenticated/unencrypted
-in production), and fix the real bugs found during the post-v1.0.0 security
+in production), and fix the real bugs found during the post-v0.1.0 security
 and stub audit.
 
 - [x] Fix MAVLink parser truncation panic on 1-2 byte buffers (`crates/tpt-t-hal/src/mavlink.rs::parse_frame`)

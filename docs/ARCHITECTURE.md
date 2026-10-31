@@ -1,6 +1,6 @@
 # tpt-teleop Architecture
 
-Version 1.0.0 · August 2026 · TPT Solutions
+Version 0.1.0 · August 2026 · TPT Solutions
 
 This document maps the workspace crates and the zero-copy data flow described
 in `spec.txt` §6.

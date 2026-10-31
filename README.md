@@ -9,7 +9,7 @@ thread-per-core pinning, and raw OS interfaces all the way down.
 
 ## Status
 
-✅ **v1.0.0 released.** All feature phases (0–14) are implemented and verified:
+✅ **v0.1.0 released** (pre-1.0; API not yet stable). All feature phases (0–14) are implemented and verified:
 `cargo test`/`clippy`/`fmt` are clean across the workspace, the MIT-chain
 dependency audit passes, and the full end-to-end pipeline is proven to make no
 per-command heap allocations and take no locks on the hot path. Phase 15 wired

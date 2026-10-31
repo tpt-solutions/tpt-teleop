@@ -1,6 +1,6 @@
 # Phase 14 — Integration, Benchmarking & Release Validation
 
-Verification record for the v1.0.0 release. Every claim below is reproducible
+Verification record for the v0.1.0 release. Every claim below is reproducible
 from a clean checkout with the commands listed at the end.
 
 ## 1. End-to-end pipeline test (Ingest → Normalize → Route → Safety → Serialize → Transmit)
