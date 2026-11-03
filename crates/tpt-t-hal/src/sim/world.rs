@@ -88,11 +88,57 @@ fn quat_rotate_inv(q: &[f64; 4], v: &[f64; 3]) -> [f64; 3] {
 
 /// Extracts ZYX Euler angles `(yaw, pitch, roll)` from a unit quaternion.
 fn quat_to_euler(q: &[f64; 4]) -> (f64, f64, f64) {
-    let sin_pitch = (-q[1] * q[3] + q[0] * q[2]).clamp(-1.0, 1.0);
-    let pitch = sin_pitch.asin();
-    let yaw = (q[1] * q[2] + q[0] * q[3]).atan2(-q[2] * q[3] + q[0] * q[1]);
-    let roll = (q[2] * q[3] + q[0] * q[1]).atan2(-q[1] * q[2] + q[0] * q[3]);
+    // Standard ZYX form, with q = [w, x, y, z]. Pitch is asin(2(wy - zx)), so it is the full sine. Roll and yaw are
+    // atan2 of the true rotation-matrix entries, so they are well conditioned near zero.
+    let (w, x, y, z) = (q[0], q[1], q[2], q[3]);
+    let roll = (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y));
+    let pitch = (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin();
+    let yaw = (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z));
     (yaw, pitch, roll)
+}
+
+/// Quaternion `[w, x, y, z]` for ZYX Euler angles (yaw about z, then pitch about y, then roll about x).
+#[cfg(test)]
+fn quat_from_euler(yaw: f64, pitch: f64, roll: f64) -> [f64; 4] {
+    let (cy, sy) = ((yaw * 0.5).cos(), (yaw * 0.5).sin());
+    let (cp, sp) = ((pitch * 0.5).cos(), (pitch * 0.5).sin());
+    let (cr, sr) = ((roll * 0.5).cos(), (roll * 0.5).sin());
+    [
+        cy * cp * cr + sy * sp * sr,
+        cy * cp * sr - sy * sp * cr,
+        cy * sp * cr + sy * cp * sr,
+        sy * cp * cr - cy * sp * sr,
+    ]
+}
+
+#[cfg(test)]
+mod euler_tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_pure_and_combined_angles() {
+        let cases = [
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.2),   // pure roll
+            (0.0, 0.2, 0.0),   // pure pitch
+            (0.7, 0.0, 0.0),   // pure yaw
+            (-1.1, 0.4, -0.3), // combined
+            (2.5, -0.5, 0.9),
+        ];
+        for (yaw, pitch, roll) in cases {
+            let (y, p, r) = quat_to_euler(&quat_from_euler(yaw, pitch, roll));
+            assert!((y - yaw).abs() < 1e-9, "yaw {y} vs {yaw}");
+            assert!((p - pitch).abs() < 1e-9, "pitch {p} vs {pitch}");
+            assert!((r - roll).abs() < 1e-9, "roll {r} vs {roll}");
+        }
+    }
+
+    #[test]
+    fn level_body_with_tiny_roll_does_not_flip() {
+        // The old formula returned ±π/2 for any small nonzero roll.
+        let (_, _, r) = quat_to_euler(&quat_from_euler(0.0, 0.0, 1e-4));
+        assert!((r - 1e-4).abs() < 1e-9, "roll {r}");
+    }
 }
 
 /// Minimal deterministic physics world: gravity, external force/torque
